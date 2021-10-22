@@ -17,7 +17,7 @@ use toml_edit::easy as toml;
 use url::Url;
 
 use crate::core::compiler::{CompileKind, CompileTarget};
-use crate::core::dependency::DepKind;
+use crate::core::dependency::{Artifact, DepKind};
 use crate::core::manifest::{ManifestMetadata, TargetSourcePath, Warnings};
 use crate::core::resolver::ResolveBehavior;
 use crate::core::{Dependency, Manifest, PackageId, Summary, Target};
@@ -1954,6 +1954,27 @@ impl<P: ResolveToPath> DetailedTomlDependency<P> {
 
             dep.set_public(p);
         }
+
+        if let (Some(artifact), is_lib) = (self.artifact.as_ref(), self.lib.unwrap_or(false)) {
+            if cx.config.cli_unstable().bindeps {
+                dep.set_artifact(Artifact::parse(artifact, is_lib)?)
+            } else {
+                let msg = format!(
+                    "'artifact = …' ignored for dependency ({}) as -Z bindeps is not set.",
+                    name_in_toml
+                );
+                cx.warnings.push(msg);
+            }
+        } else if let Some(_lib) = self.lib {
+            if cx.config.cli_unstable().bindeps {
+                bail!("'lib' specifier cannot be used without an 'artifact = …' value")
+            } else {
+                cx.warnings.push(
+                    "'lib' specifiers need an 'artifact = [..]' value and would fail the operation when '-Z bindeps' is provided."
+                        .into(),
+                )
+            }
+        };
         Ok(dep)
     }
 }

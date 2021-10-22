@@ -9,6 +9,7 @@ use std::rc::Rc;
 use crate::core::{PackageId, SourceId, Summary};
 use crate::util::errors::CargoResult;
 use crate::util::interning::InternedString;
+use crate::util::toml::StringOrVec;
 use crate::util::OptVersionReq;
 
 /// Information about a dependency requested by a Cargo manifest.
@@ -40,6 +41,7 @@ struct Inner {
     public: bool,
     default_features: bool,
     features: Vec<InternedString>,
+    artifact: Option<Artifact>,
 
     // This dependency should be used only for this platform.
     // `None` means *all platforms*.
@@ -159,6 +161,7 @@ impl Dependency {
                 specified_req: false,
                 platform: None,
                 explicit_name_in_toml: None,
+                artifact: None,
             }),
         }
     }
@@ -403,4 +406,85 @@ impl Dependency {
         }
         self
     }
+
+    pub(crate) fn set_artifact(&mut self, artifact: Artifact) {
+        Rc::make_mut(&mut self.inner).artifact = Some(artifact);
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+pub struct Artifact {
+    inner: Rc<ArtifactInner>,
+}
+
+impl Artifact {
+    pub fn parse(artifacts: &StringOrVec, is_lib: bool) -> CargoResult<Self> {
+        Ok(Artifact {
+            inner: Rc::new(ArtifactInner {
+                kinds: ArtifactKind::validate(
+                    artifacts
+                        .iter()
+                        .map(|s| ArtifactKind::parse(s))
+                        .collect::<Result<Vec<_>, _>>()?,
+                )?,
+                is_lib,
+            }),
+        })
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Clone, Ord, PartialOrd, Debug)]
+enum ArtifactKind {
+    /// We represent all binaries in this dependency
+    AllBinaries,
+    /// We represent a single binary
+    SelectedBinary(InternedString),
+    Cdylib,
+    Staticlib,
+}
+
+impl ArtifactKind {
+    fn parse(kind: &str) -> CargoResult<Self> {
+        Ok(match kind {
+            "bin" => ArtifactKind::AllBinaries,
+            "cdylib" => ArtifactKind::Cdylib,
+            "staticlib" => ArtifactKind::Staticlib,
+            _ => {
+                return kind
+                    .strip_prefix("bin:")
+                    .map(|bin_name| ArtifactKind::SelectedBinary(InternedString::new(bin_name)))
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("'{}' is not a valid artifact specifier.", kind)
+                    })
+            }
+        })
+    }
+
+    fn validate(kinds: Vec<ArtifactKind>) -> CargoResult<Vec<ArtifactKind>> {
+        if kinds.iter().any(|k| matches!(k, ArtifactKind::AllBinaries))
+            && kinds
+                .iter()
+                .any(|k| matches!(k, ArtifactKind::SelectedBinary(_)))
+        {
+            anyhow::bail!("Cannot specify both 'bin' and 'bin:<name>' binary artifacts, as 'bin' selects all available binaries.");
+        }
+        let mut kinds_without_dupes = kinds.clone();
+        kinds_without_dupes.sort();
+        kinds_without_dupes.dedup();
+        let num_dupes = kinds.len() - kinds_without_dupes.len();
+        if num_dupes != 0 {
+            anyhow::bail!(
+                "Found {} duplicate binary artifact{}",
+                num_dupes,
+                (num_dupes > 1).then(|| "s").unwrap_or("")
+            );
+        }
+        Ok(kinds)
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+struct ArtifactInner {
+    kinds: Vec<ArtifactKind>,
+    is_lib: bool,
 }
