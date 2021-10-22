@@ -271,6 +271,8 @@ pub struct DetailedTomlDependency<P = String> {
     tag: Option<String>,
     rev: Option<String>,
     features: Option<Vec<String>>,
+    artifact: Option<StringOrVec>,
+    lib: Option<bool>,
     optional: Option<bool>,
     default_features: Option<bool>,
     #[serde(rename = "default_features")]
@@ -292,6 +294,8 @@ impl<P> Default for DetailedTomlDependency<P> {
             tag: Default::default(),
             rev: Default::default(),
             features: Default::default(),
+            artifact: Default::default(),
+            lib: Default::default(),
             optional: Default::default(),
             default_features: Default::default(),
             default_features2: Default::default(),

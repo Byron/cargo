@@ -754,38 +754,6 @@ fn unused_keys_in_virtual_manifest() {
 }
 
 #[cargo_test]
-fn artifact_dependencies_can_be_parsed() {
-    let p = project()
-        .file(
-            "Cargo.toml",
-            r#"
-                [package]
-                name = "foo"
-                version = "0.0.0"
-                authors = []
-                
-                [dependencies]
-                bar = { path = "bar/", artifact = "bin", lib = true }
-            "#,
-        )
-        .file("src/lib.rs", "")
-        .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
-        .file("bar/src/lib.rs", "")
-        .build();
-    p.cargo("build")
-        .with_stderr(
-            "\
-[WARNING] unused manifest key: dependencies.bar.artifact
-[WARNING] unused manifest key: dependencies.bar.lib
-[COMPILING] bar [..]
-[COMPILING] foo [..]
-[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
-",
-        )
-        .run();
-}
-
-#[cargo_test]
 fn empty_dependencies() {
     let p = project()
         .file(
