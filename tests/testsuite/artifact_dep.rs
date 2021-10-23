@@ -136,11 +136,18 @@ fn build_makes_additional_envvars_available_in_rustc_invocations() {
                 version = "0.0.0"
                 authors = []
                 
+                [build-dependencies]
+                bar = { path = "bar/", artifact = ["cdylib", "staticlib"] }
+                
+                [dev-dependencies]
+                bar = { path = "bar/", artifact = ["bin:a", "bin:b"] }
+                
                 [dependencies]
                 bar = { path = "bar/", artifact = "bin", lib = true }
             "#,
         )
         .file("src/lib.rs", "")
+        .file("build.rs", "fn main() {}")
         .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
         .file("bar/src/lib.rs", "")
         .build();
@@ -293,4 +300,109 @@ artifact = ["bin:a", "cdylib", "staticlib"]"#,
             ),
         )],
     );
+}
+
+#[cargo_test]
+fn doc_lib_true() {
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.1"
+                authors = []
+
+                [dependencies.bar]
+                path = "bar"
+                artifact = "bin"
+                lib = true
+            "#,
+        )
+        .file("src/lib.rs", "extern crate bar; pub fn foo() {}")
+        .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
+        .file("bar/src/lib.rs", "pub fn bar() {}")
+        .file("bar/src/main.rs", "fn main() {}")
+        .build();
+
+    p.cargo("doc -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_stderr(
+            "\
+[..] bar v0.0.1 ([CWD]/bar)
+[..] bar v0.0.1 ([CWD]/bar)
+[DOCUMENTING] foo v0.0.1 ([CWD])
+[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
+",
+        )
+        .run();
+
+    assert!(p.root().join("target/doc").is_dir());
+    assert!(p.root().join("target/doc/foo/index.html").is_file());
+    assert!(p.root().join("target/doc/bar/index.html").is_file());
+
+    // Verify that it only emits rmeta for the dependency.
+    assert_eq!(p.glob("target/debug/**/*.rlib").count(), 0);
+    assert_eq!(p.glob("target/debug/deps/libbar-*.rmeta").count(), 1);
+
+    p.cargo("doc")
+        .env("CARGO_LOG", "cargo::ops::cargo_rustc::fingerprint")
+        .with_stdout("")
+        .run();
+
+    assert!(p.root().join("target/doc").is_dir());
+    assert!(p.root().join("target/doc/foo/index.html").is_file());
+    assert!(p.root().join("target/doc/bar/index.html").is_file());
+}
+
+#[cargo_test]
+#[ignore] // TODO: assure this doesn't fail
+fn no_doc_for_non_lib() {
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.1"
+                authors = []
+
+                [dependencies.bar]
+                path = "bar"
+                artifact = "bin"
+            "#,
+        )
+        .file("src/lib.rs", "extern crate bar; pub fn foo() {}")
+        .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
+        .file("bar/src/lib.rs", "pub fn bar() {}")
+        .file("bar/src/main.rs", "fn main() {}")
+        .build();
+
+    p.cargo("doc -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_stderr(
+            "\
+[CHECKING] bar v0.0.1 ([CWD]/bar)
+[DOCUMENTING] foo v0.0.1 ([CWD])
+[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
+",
+        )
+        .run();
+
+    assert!(p.root().join("target/doc").is_dir());
+    assert!(p.root().join("target/doc/foo/index.html").is_file());
+    assert!(p.root().join("target/doc/bar/index.html").is_file());
+
+    // Verify that it only emits rmeta for the dependency.
+    assert_eq!(p.glob("target/debug/**/*.rlib").count(), 0);
+    assert_eq!(p.glob("target/debug/deps/libbar-*.rmeta").count(), 1);
+
+    p.cargo("doc")
+        .env("CARGO_LOG", "cargo::ops::cargo_rustc::fingerprint")
+        .with_stdout("")
+        .run();
+
+    assert!(p.root().join("target/doc").is_dir());
+    assert!(p.root().join("target/doc/foo/index.html").is_file());
+    assert!(p.root().join("target/doc/bar/index.html").is_file());
 }
