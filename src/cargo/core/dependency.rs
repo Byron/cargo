@@ -419,16 +419,17 @@ pub struct Artifact {
 
 impl Artifact {
     pub fn parse(artifacts: &StringOrVec, is_lib: bool) -> CargoResult<Self> {
+        let mut kinds = ArtifactKind::validate(
+            artifacts
+                .iter()
+                .map(|s| ArtifactKind::parse(s))
+                .collect::<Result<Vec<_>, _>>()?,
+        )?;
+        if is_lib {
+            kinds.push(ArtifactKind::Rlib)
+        };
         Ok(Artifact {
-            inner: Rc::new(ArtifactInner {
-                kinds: ArtifactKind::validate(
-                    artifacts
-                        .iter()
-                        .map(|s| ArtifactKind::parse(s))
-                        .collect::<Result<Vec<_>, _>>()?,
-                )?,
-                is_lib,
-            }),
+            inner: Rc::new(ArtifactInner { kinds, is_lib }),
         })
     }
 }
@@ -439,6 +440,7 @@ enum ArtifactKind {
     AllBinaries,
     /// We represent a single binary
     SelectedBinary(InternedString),
+    Rlib,
     Cdylib,
     Staticlib,
 }
