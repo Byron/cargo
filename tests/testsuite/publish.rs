@@ -1294,6 +1294,117 @@ repository = "foo"
 }
 
 #[cargo_test]
+fn publish_artifact_dep() {
+    registry::init();
+    Package::new("bar", "1.0.0").publish();
+    Package::new("baz", "1.0.0").publish();
+
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+            [package]
+            name = "foo"
+            version = "0.1.0"
+            authors = []
+            license = "MIT"
+            description = "foo"
+            documentation = "foo"
+            homepage = "foo"
+            repository = "foo"
+
+            [dependencies]
+            bar = { version = "1.0", artifact = "bin", lib = true }
+            
+            [build-dependencies]
+            baz = { version = "1.0", artifact = ["bin:a", "cdylib", "staticlib"] }
+            "#,
+        )
+        .file("src/lib.rs", "")
+        .build();
+
+    p.cargo("publish -Z unstable-options -Z bindeps --no-verify --token sekrit")
+        .masquerade_as_nightly_cargo()
+        .with_stderr(
+            "\
+[UPDATING] [..]
+[PACKAGING] foo v0.1.0 [..]
+[UPLOADING] foo v0.1.0 [..]
+",
+        )
+        .run();
+
+    publish::validate_upload_with_contents(
+        r#"
+        {
+          "authors": [],
+          "badges": {},
+          "categories": [],
+          "deps": [{
+              "default_features": true,
+              "features": [],
+              "kind": "normal",
+              "name": "bar",
+              "optional": false,
+              "registry": "https://github.com/rust-lang/crates.io-index",
+              "target": null,
+              "version_req": "^1.0"
+            },
+            {
+              "default_features": true,
+              "features": [],
+              "kind": "build",
+              "name": "baz",
+              "optional": false,
+              "registry": "https://github.com/rust-lang/crates.io-index",
+              "target": null,
+              "version_req": "^1.0"
+            }
+          ],
+          "description": "foo",
+          "documentation": "foo",
+          "features": {},
+          "homepage": "foo",
+          "keywords": [],
+          "license": "MIT",
+          "license_file": null,
+          "links": null,
+          "name": "foo",
+          "readme": null,
+          "readme_file": null,
+          "repository": "foo",
+          "vers": "0.1.0"
+        }
+        "#,
+        "foo-0.1.0.crate",
+        &["Cargo.toml", "Cargo.toml.orig", "src/lib.rs"],
+        &[(
+            "Cargo.toml",
+            &format!(
+                r#"{}
+[package]
+name = "foo"
+version = "0.1.0"
+authors = []
+description = "foo"
+homepage = "foo"
+documentation = "foo"
+license = "MIT"
+repository = "foo"
+[dependencies.bar]
+version = "1.0"
+artifact = ["bin"]
+lib = true
+[build-dependencies.baz]
+version = "1.0"
+artifact = ["bin:a", "cdylib", "staticlib"]"#,
+                cargo::core::package::MANIFEST_PREAMBLE
+            ),
+        )],
+    );
+}
+
+#[cargo_test]
 fn credentials_ambiguous_filename() {
     registry::init();
 
