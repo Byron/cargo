@@ -519,7 +519,7 @@ impl<'cfg> PackageSet<'cfg> {
                 target_data,
                 force_all_targets,
             );
-            for pkg_id in filtered_deps {
+            for (pkg_id, _dep) in filtered_deps {
                 collect_used_deps(
                     used,
                     resolve,
@@ -554,19 +554,20 @@ impl<'cfg> PackageSet<'cfg> {
     }
 
     /// Check if there are any dependency packages that do not have any libs.
-    pub(crate) fn no_lib_pkgs(
+    pub(crate) fn warn_no_lib_packages(
         &self,
+        ws: &Workspace<'cfg>,
         resolve: &Resolve,
         root_ids: &[PackageId],
         has_dev_units: HasDevUnits,
         requested_kinds: &[CompileKind],
         target_data: &RustcTargetData<'_>,
         force_all_targets: ForceAllTargets,
-    ) -> BTreeMap<PackageId, Vec<&Package>> {
-        root_ids
+    ) -> CargoResult<()> {
+        let no_lib_pkgs: BTreeMap<PackageId, Vec<&Package>> = root_ids
             .iter()
             .map(|&root_id| {
-                let pkgs = PackageSet::filter_deps(
+                let dep_pkgs = PackageSet::filter_deps(
                     root_id,
                     resolve,
                     has_dev_units,
@@ -574,8 +575,8 @@ impl<'cfg> PackageSet<'cfg> {
                     target_data,
                     force_all_targets,
                 )
-                .filter_map(|package_id| {
-                    if let Ok(dep_pkg) = self.get_one(package_id) {
+                .filter_map(|(dep_package_id, _deps_todo)| {
+                    if let Ok(dep_pkg) = self.get_one(dep_package_id) {
                         if !dep_pkg.targets().iter().any(|t| t.is_lib()) {
                             Some(dep_pkg)
                         } else {
@@ -586,9 +587,20 @@ impl<'cfg> PackageSet<'cfg> {
                     }
                 })
                 .collect();
-                (root_id, pkgs)
+                (root_id, dep_pkgs)
             })
-            .collect()
+            .collect();
+
+        for (pkg_id, dep_pkgs) in no_lib_pkgs {
+            for dep_pkg in dep_pkgs {
+                ws.config().shell().warn(&format!(
+                    "{} ignoring invalid dependency `{}` which is missing a lib target",
+                    pkg_id,
+                    dep_pkg.name(),
+                ))?;
+            }
+        }
+        Ok(())
     }
 
     fn filter_deps<'a>(
@@ -598,7 +610,7 @@ impl<'cfg> PackageSet<'cfg> {
         requested_kinds: &'a [CompileKind],
         target_data: &'a RustcTargetData<'_>,
         force_all_targets: ForceAllTargets,
-    ) -> impl Iterator<Item = PackageId> + 'a {
+    ) -> impl Iterator<Item = (PackageId, &'a HashSet<Dependency>)> + 'a {
         resolve
             .deps(pkg_id)
             .filter(move |&(_id, deps)| {
@@ -618,7 +630,6 @@ impl<'cfg> PackageSet<'cfg> {
                     true
                 })
             })
-            .map(|(pkg_id, _)| pkg_id)
             .into_iter()
     }
 

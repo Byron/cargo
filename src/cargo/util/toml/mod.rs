@@ -1970,7 +1970,7 @@ impl<P: ResolveToPath> DetailedTomlDependency<P> {
                 bail!("'lib' specifier cannot be used without an 'artifact = …' value")
             } else {
                 cx.warnings.push(
-                    "'lib' specifiers need an 'artifact = [..]' value and would fail the operation when '-Z bindeps' is provided."
+                    "'lib' specifiers need an 'artifact = …' value and would fail the operation when '-Z bindeps' is provided."
                         .into(),
                 )
             }

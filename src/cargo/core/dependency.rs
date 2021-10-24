@@ -41,6 +41,7 @@ struct Inner {
     public: bool,
     default_features: bool,
     features: Vec<InternedString>,
+    // The presence of this information turns a dependency into an artifact dependency.
     artifact: Option<Artifact>,
 
     // This dependency should be used only for this platform.
@@ -410,26 +411,40 @@ impl Dependency {
     pub(crate) fn set_artifact(&mut self, artifact: Artifact) {
         Rc::make_mut(&mut self.inner).artifact = Some(artifact);
     }
+
+    #[allow(dead_code)]
+    pub(crate) fn artifact(&self) -> Option<&Artifact> {
+        self.inner.artifact.as_ref()
+    }
+
+    /// Dependencies are potential rust libraries if they are not artifacts or they are an artifact
+    /// which allows to be seen as library, too.
+    #[allow(dead_code)]
+    pub(crate) fn maybe_lib(&self) -> bool {
+        self.artifact().map(|a| a.is_lib).unwrap_or(true)
+    }
 }
 
+/// The presence of an artifact turns an ordinary dependency into an Artifact dependency.
+/// As such, it will build one or more different artifacts of possibly various kinds
+/// for making them available at build time for rustc invocations or runtime for build scripts.
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Artifact {
-    inner: Rc<ArtifactInner>,
+    inner: Rc<Vec<ArtifactKind>>,
+    is_lib: bool,
 }
 
 impl Artifact {
     pub fn parse(artifacts: &StringOrVec, is_lib: bool) -> CargoResult<Self> {
-        let mut kinds = ArtifactKind::validate(
+        let kinds = ArtifactKind::validate(
             artifacts
                 .iter()
                 .map(|s| ArtifactKind::parse(s))
                 .collect::<Result<Vec<_>, _>>()?,
         )?;
-        if is_lib {
-            kinds.push(ArtifactKind::Rlib)
-        };
         Ok(Artifact {
-            inner: Rc::new(ArtifactInner { kinds, is_lib }),
+            inner: Rc::new(kinds),
+            is_lib,
         })
     }
 }
@@ -440,7 +455,6 @@ enum ArtifactKind {
     AllBinaries,
     /// We represent a single binary
     SelectedBinary(InternedString),
-    Rlib,
     Cdylib,
     Staticlib,
 }
@@ -483,10 +497,4 @@ impl ArtifactKind {
         }
         Ok(kinds)
     }
-}
-
-#[derive(PartialEq, Eq, Hash, Clone, Debug)]
-struct ArtifactInner {
-    kinds: Vec<ArtifactKind>,
-    is_lib: bool,
 }
