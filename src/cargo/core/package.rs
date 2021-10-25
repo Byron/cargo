@@ -575,7 +575,8 @@ impl<'cfg> PackageSet<'cfg> {
                     target_data,
                     force_all_targets,
                 )
-                .filter_map(|(dep_package_id, _deps_todo)| {
+                .filter(|(_id, deps)| deps.iter().all(|dep| dep.maybe_lib()))
+                .filter_map(|(dep_package_id, _deps)| {
                     if let Ok(dep_pkg) = self.get_one(dep_package_id) {
                         if !dep_pkg.targets().iter().any(|t| t.is_lib()) {
                             Some(dep_pkg)

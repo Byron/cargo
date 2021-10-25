@@ -412,14 +412,12 @@ impl Dependency {
         Rc::make_mut(&mut self.inner).artifact = Some(artifact);
     }
 
-    #[allow(dead_code)]
     pub(crate) fn artifact(&self) -> Option<&Artifact> {
         self.inner.artifact.as_ref()
     }
 
     /// Dependencies are potential rust libraries if they are not artifacts or they are an artifact
     /// which allows to be seen as library, too.
-    #[allow(dead_code)]
     pub(crate) fn maybe_lib(&self) -> bool {
         self.artifact().map(|a| a.is_lib).unwrap_or(true)
     }

@@ -289,7 +289,6 @@ fn check_rust_libs_are_available_with_lib_true() {
 }
 
 #[cargo_test]
-#[ignore]
 fn prevent_no_lib_warning_with_artifact_dependencies() {
     let p = project()
         .file(
@@ -312,7 +311,6 @@ fn prevent_no_lib_warning_with_artifact_dependencies() {
         .masquerade_as_nightly_cargo()
         .with_stderr(
             "\
-[CHECKING] bar [..]
 [CHECKING] foo [..]
 [FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
 ",
