@@ -171,7 +171,7 @@ pub fn resolve_ws_with_opts<'cfg>(
         feature_opts,
     )?;
 
-    pkg_set.warn_no_lib_packages(
+    pkg_set.warn_no_lib_packages_and_validate_artifacts_constraints(
         ws,
         &resolved_with_overrides,
         &member_ids,

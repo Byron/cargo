@@ -553,8 +553,9 @@ impl<'cfg> PackageSet<'cfg> {
         Ok(())
     }
 
-    /// Check if there are any dependency packages that do not have any libs.
-    pub(crate) fn warn_no_lib_packages(
+    /// Check if there are any dependency packages that violate artifact constraints
+    /// to instantly abort, or that do not have any libs which results in warnings.
+    pub(crate) fn warn_no_lib_packages_and_validate_artifacts_constraints(
         &self,
         ws: &Workspace<'cfg>,
         resolve: &Resolve,
@@ -567,7 +568,7 @@ impl<'cfg> PackageSet<'cfg> {
         let no_lib_pkgs: BTreeMap<PackageId, Vec<&Package>> = root_ids
             .iter()
             .map(|&root_id| {
-                let dep_pkgs = PackageSet::filter_deps(
+                let dep_pkgs_to_deps: Vec<_> = PackageSet::filter_deps(
                     root_id,
                     resolve,
                     has_dev_units,
@@ -575,22 +576,50 @@ impl<'cfg> PackageSet<'cfg> {
                     target_data,
                     force_all_targets,
                 )
-                .filter(|(_id, deps)| deps.iter().all(|dep| dep.maybe_lib()))
-                .filter_map(|(dep_package_id, _deps)| {
-                    if let Ok(dep_pkg) = self.get_one(dep_package_id) {
-                        if !dep_pkg.targets().iter().any(|t| t.is_lib()) {
-                            Some(dep_pkg)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                })
                 .collect();
-                (root_id, dep_pkgs)
+
+                // TODO: move these checks to later stage where a better error can be produced, and maybe where
+                //       the checks are happening as a side-effect of creating actual build targets.
+                for dep_ids_and_deps_for_kind in
+                    [DepKind::Normal, DepKind::Build, DepKind::Development]
+                        .iter()
+                        .map(|&dep_kind| dep_pkgs_to_deps.iter().filter_map(move |(_dep_id, deps)| {
+                                    let mut iter = deps
+                                        .iter()
+                                        .filter(move |dep| dep.kind() == dep_kind)
+                                        .peekable();
+                                    iter.peek().is_some().then(|| iter.collect::<Vec<_>>())
+                                })
+                            )
+                {
+                    for deps in dep_ids_and_deps_for_kind {
+                        let artifact_name = deps
+                            .iter()
+                            .find_map(|dep| dep.artifact().is_some().then(|| dep.name_in_toml()));
+                        let non_artifact_name = deps
+                            .iter()
+                            .find_map(|dep| dep.artifact().is_none().then(|| dep.name_in_toml()));
+                        if let (Some(artifact_name), Some(non_artifact_name)) =
+                            (artifact_name, non_artifact_name)
+                        {
+                            anyhow::bail!(r#"Cannot mix artifact and non-artifact dependencies in the same section.
+       Set lib = true in dependency '{}' and remove dependency '{}'."#, artifact_name, non_artifact_name);
+                        }
+                    }
+                }
+
+                let dep_pkgs = dep_pkgs_to_deps
+                    .iter()
+                    .filter(|(_id, deps)| deps.iter().all(|dep| dep.maybe_lib()))
+                    .filter_map(|(dep_package_id, _deps)| {
+                        self.get_one(*dep_package_id).ok().and_then(|dep_pkg| {
+                            (!dep_pkg.targets().iter().any(|t| t.is_lib())).then(|| dep_pkg)
+                        })
+                    })
+                    .collect();
+                Ok::<_, anyhow::Error>((root_id, dep_pkgs))
             })
-            .collect();
+            .collect::<Result<_, _>>()?;
 
         for (pkg_id, dep_pkgs) in no_lib_pkgs {
             for dep_pkg in dep_pkgs {

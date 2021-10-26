@@ -126,6 +126,70 @@ fn build_without_nightly_shows_warnings_and_ignores_them() {
 }
 
 #[cargo_test]
+fn disallow_artifact_and_no_artifact_dep_to_same_package_within_the_same_dep_category() {
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                
+                [dependencies]
+                bar = { path = "bar/", artifact = "bin" }
+                bar_stable = { path = "bar/", package = "bar" }
+            "#,
+        )
+        .file("src/lib.rs", "") // this would fail if artifacts are available as these aren't libs by default
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file("bar/src/main.rs", "")
+        .build();
+    p.cargo("check -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_status(101)
+        .with_stderr(
+            "\
+error: Cannot mix artifact and non-artifact dependencies in the same section.
+       Set lib = true in dependency 'bar' and remove dependency 'bar_stable'.",
+        )
+        .run();
+}
+
+#[cargo_test]
+fn allow_artifact_and_no_artifact_dep_to_same_package_within_different_dep_categories() {
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                
+                [dependencies]
+                bar = { path = "bar/", artifact = "bin" }
+                
+                [dev-dependencies]
+                bar = { path = "bar/", package = "bar" }
+            "#,
+        )
+        .file("src/lib.rs", "")
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file("bar/src/main.rs", "")
+        .build();
+    p.cargo("check -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_stderr(
+            "\
+[CHECKING] foo [..]
+[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
+",
+        )
+        .run();
+}
+
+#[cargo_test]
 #[ignore]
 fn disallow_dep_renames_with_multiple_versions() {
     Package::new("bar", "1.0.0").publish();
