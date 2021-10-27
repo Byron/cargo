@@ -81,7 +81,7 @@ fn build_without_nightly_shows_warnings_and_ignores_them() {
                 bar = { path = "bar/", artifact = "bin" }
             "#,
         )
-        .file("src/lib.rs", "extern crate bar;") // this would fail if artifacts are available as these aren't libs by default
+        .file("src/lib.rs", "extern crate bar;")
         .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
         .file("bar/src/lib.rs", "")
         .build();
@@ -126,7 +126,7 @@ fn build_without_nightly_shows_warnings_and_ignores_them() {
 }
 
 #[cargo_test]
-fn disallow_artifact_and_no_artifact_dep_to_same_package_within_the_same_dep_category() {
+fn warn_about_artifact_and_no_artifact_dep_to_same_package_within_the_same_dep_category() {
     let p = project()
         .file(
             "Cargo.toml",
@@ -141,17 +141,17 @@ fn disallow_artifact_and_no_artifact_dep_to_same_package_within_the_same_dep_cat
                 bar_stable = { path = "bar/", package = "bar" }
             "#,
         )
-        .file("src/lib.rs", "") // this would fail if artifacts are available as these aren't libs by default
+        .file("src/lib.rs", "")
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
         .file("bar/src/main.rs", "")
         .build();
     p.cargo("check -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
-        .with_status(101)
         .with_stderr(
             "\
-error: Cannot mix artifact and non-artifact dependencies in the same section.
-       Set lib = true in dependency 'bar' and remove dependency 'bar_stable'.",
+[WARNING] Consider setting 'lib = true' in artifact dependency 'bar' instead of declaring 'bar_stable' separately.
+[CHECKING] foo [..]
+[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]",
         )
         .run();
 }
@@ -375,6 +375,37 @@ fn prevent_no_lib_warning_with_artifact_dependencies() {
         .masquerade_as_nightly_cargo()
         .with_stderr(
             "\
+[CHECKING] foo [..]
+[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
+",
+        )
+        .run();
+}
+
+#[cargo_test]
+fn show_no_lib_warning_with_artifact_dependencies_that_have_no_lib_but_lib_true() {
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                
+                [dependencies]
+                bar = { path = "bar/", artifact = "bin", lib = true }
+            "#,
+        )
+        .file("src/lib.rs", "")
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file("bar/src/main.rs", "")
+        .build();
+    p.cargo("check -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_stderr(
+            "\
+[WARNING] foo v0.0.0 ([CWD]) ignoring invalid dependency `bar` which is missing a lib target
 [CHECKING] foo [..]
 [FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
 ",

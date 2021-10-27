@@ -578,7 +578,7 @@ impl<'cfg> PackageSet<'cfg> {
                 )
                 .collect();
 
-                // TODO: move these checks to later stage where a better error can be produced, and maybe where
+                // TODO: try to move these checks to later stage where a better error can be produced, and maybe where
                 //       the checks are happening as a side-effect of creating actual build targets.
                 for dep_ids_and_deps_for_kind in
                     [DepKind::Normal, DepKind::Build, DepKind::Development]
@@ -602,8 +602,8 @@ impl<'cfg> PackageSet<'cfg> {
                         if let (Some(artifact_name), Some(non_artifact_name)) =
                             (artifact_name, non_artifact_name)
                         {
-                            anyhow::bail!(r#"Cannot mix artifact and non-artifact dependencies in the same section.
-       Set lib = true in dependency '{}' and remove dependency '{}'."#, artifact_name, non_artifact_name);
+                            ws.config().shell().warn(format!(r#"Consider setting 'lib = true' in artifact dependency '{}' instead of declaring '{}' separately."#,
+                                                             artifact_name, non_artifact_name))?;
                         }
                     }
                 }
