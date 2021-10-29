@@ -117,6 +117,8 @@ pub struct Layout {
     deps: PathBuf,
     /// The directory for build scripts: `$dest/build`
     build: PathBuf,
+    /// The directory for artifacts, i.e. binaries, cdylibs, staticlibs: `$dest/artifact`
+    artifact: PathBuf,
     /// The directory for incremental files: `$dest/incremental`
     incremental: PathBuf,
     /// The directory for fingerprints: `$dest/.fingerprint`
@@ -168,6 +170,7 @@ impl Layout {
         Ok(Layout {
             deps: dest.join("deps"),
             build: dest.join("build"),
+            artifact: dest.join("artifact"),
             incremental: dest.join("incremental"),
             fingerprint: dest.join(".fingerprint"),
             examples: dest.join("examples"),
@@ -221,6 +224,10 @@ impl Layout {
     /// Fetch the build script path.
     pub fn build(&self) -> &Path {
         &self.build
+    }
+    /// Fetch the artifact path.
+    pub fn artifact(&self) -> &Path {
+        &self.artifact
     }
     /// Create and return the tmp path.
     pub fn prepare_tmp(&self) -> CargoResult<&Path> {

@@ -3,6 +3,7 @@ use log::trace;
 use semver::VersionReq;
 use serde::ser;
 use serde::Serialize;
+use std::fmt;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -427,6 +428,8 @@ impl Dependency {
 /// The presence of an artifact turns an ordinary dependency into an Artifact dependency.
 /// As such, it will build one or more different artifacts of possibly various kinds
 /// for making them available at build time for rustc invocations or runtime for build scripts.
+///
+/// This information represents a requirement in the package this dependency refers to.
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Artifact {
     inner: Rc<Vec<ArtifactKind>>,
@@ -434,7 +437,7 @@ pub struct Artifact {
 }
 
 impl Artifact {
-    pub fn parse(artifacts: &StringOrVec, is_lib: bool) -> CargoResult<Self> {
+    pub(crate) fn parse(artifacts: &StringOrVec, is_lib: bool) -> CargoResult<Self> {
         let kinds = ArtifactKind::validate(
             artifacts
                 .iter()
@@ -446,16 +449,31 @@ impl Artifact {
             is_lib,
         })
     }
+
+    pub(crate) fn kinds(&self) -> &[ArtifactKind] {
+        &self.inner
+    }
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Ord, PartialOrd, Debug)]
-enum ArtifactKind {
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Ord, PartialOrd, Debug)]
+pub enum ArtifactKind {
     /// We represent all binaries in this dependency
     AllBinaries,
     /// We represent a single binary
     SelectedBinary(InternedString),
     Cdylib,
     Staticlib,
+}
+
+impl fmt::Display for ArtifactKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            ArtifactKind::Cdylib => "cdylib",
+            ArtifactKind::Staticlib => "staticlib",
+            ArtifactKind::AllBinaries => "bin",
+            ArtifactKind::SelectedBinary(bin_name) => return write!(f, "bin:{}", bin_name),
+        })
+    }
 }
 
 impl ArtifactKind {

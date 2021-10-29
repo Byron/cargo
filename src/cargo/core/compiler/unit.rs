@@ -55,6 +55,9 @@ pub struct UnitInner {
     /// The `cfg` features to enable for this unit.
     /// This must be sorted.
     pub features: Vec<InternedString>,
+    // if `true`, the dependency is an artifact dependency, requiring special handling when calculating output directories,
+    // linkage and environment variables provided to builds.
+    pub artifact: bool,
     /// Whether this is a standard library unit.
     pub is_std: bool,
     /// A hash of all dependencies of this unit.
@@ -179,6 +182,7 @@ impl UnitInterner {
         features: Vec<InternedString>,
         is_std: bool,
         dep_hash: u64,
+        artifact: bool,
     ) -> Unit {
         let target = match (is_std, target.kind()) {
             // This is a horrible hack to support build-std. `libstd` declares
@@ -210,6 +214,7 @@ impl UnitInterner {
             features,
             is_std,
             dep_hash,
+            artifact,
         });
         Unit { inner }
     }

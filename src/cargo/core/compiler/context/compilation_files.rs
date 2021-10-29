@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::fmt;
@@ -242,8 +243,12 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
 
     /// Returns the directories where Rust crate dependencies are found for the
     /// specified unit.
-    pub fn deps_dir(&self, unit: &Unit) -> &Path {
-        self.layout(unit.kind).deps()
+    pub fn deps_dir(&self, unit: &Unit) -> Cow<'_, Path> {
+        if unit.artifact {
+            self.artifact_dir(unit).into()
+        } else {
+            self.layout(unit.kind).deps().into()
+        }
     }
 
     /// Directory where the fingerprint for the given unit should go.
@@ -285,6 +290,27 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
         assert!(self.metas.contains_key(unit));
         let dir = self.pkg_dir(unit);
         self.layout(CompileKind::Host).build().join(dir)
+    }
+
+    /// Returns the directory where a compiled artifacts are stored.
+    /// `/path/to/target/{debug,release}/artifact/PKG-HASH`
+    pub fn artifact_dir(&self, unit: &Unit) -> PathBuf {
+        assert!(self.metas.contains_key(unit));
+        assert!(unit.artifact);
+        let dir = self.pkg_dir(unit);
+        let kind = match unit.target.kind() {
+            TargetKind::Bin => "bin",
+            TargetKind::Lib(lib_kinds) => match lib_kinds.as_slice() {
+                &[CrateType::Cdylib] => "cdylib",
+                &[CrateType::Staticlib] => "staticlib",
+                invalid => unreachable!("BUG: unexpected artifact library type(s): {:?}", invalid),
+            },
+            invalid => unreachable!(
+                "BUG: {:?} are not supposed to be used as artifacts",
+                invalid
+            ),
+        };
+        self.layout(unit.kind).artifact().join(dir).join(kind)
     }
 
     /// Returns the directory where information about running a build script
@@ -354,7 +380,7 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
         if unit.mode != CompileMode::Build || file_type.flavor == FileFlavor::Rmeta {
             return None;
         }
-        // Only uplift:
+        // Only uplift non-artifacts:
         // - Binaries: The user always wants to see these, even if they are
         //   implicitly built (for example for integration tests).
         // - dylibs: This ensures that the dynamic linker pulls in all the
@@ -364,10 +390,11 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
         //   This one is a little questionable for rlibs (see #6131), but is
         //   historically how Cargo has operated. This is primarily useful to
         //   give the user access to staticlibs and cdylibs.
-        if !unit.target.is_bin()
-            && !unit.target.is_custom_build()
-            && file_type.crate_type != Some(CrateType::Dylib)
-            && !self.roots.contains(unit)
+        if unit.artifact
+            || (!unit.target.is_bin()
+                && !unit.target.is_custom_build()
+                && file_type.crate_type != Some(CrateType::Dylib)
+                && !self.roots.contains(unit))
         {
             return None;
         }

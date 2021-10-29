@@ -217,6 +217,11 @@ fn rustc(cx: &mut Context<'_, '_>, unit: &Unit, exec: &Arc<dyn Executor>) -> Car
     let outputs = cx.outputs(unit)?;
     let root = cx.files().out_dir(unit);
 
+    // Artifacts are in a different location than typical units
+    if unit.artifact {
+        paths::create_dir_all(&root)?;
+    }
+
     // Prepare the native lib state (extra `-L` and `-l` flags).
     let build_script_outputs = Arc::clone(&cx.build_script_outputs);
     let current_id = unit.pkg.package_id();
@@ -1082,7 +1087,7 @@ fn build_deps_args(
     let bcx = cx.bcx;
     cmd.arg("-L").arg(&{
         let mut deps = OsString::from("dependency=");
-        deps.push(cx.files().deps_dir(unit));
+        deps.push(cx.files().deps_dir(unit).as_ref());
         deps
     });
 

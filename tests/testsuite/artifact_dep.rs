@@ -157,6 +157,52 @@ fn warn_about_artifact_and_no_artifact_dep_to_same_package_within_the_same_dep_c
 }
 
 #[cargo_test]
+fn build_script_with_bin_artifact() {
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                
+                [build-dependencies]
+                bar = { path = "bar/", artifact = "bin" }
+            "#,
+        )
+        .file("src/lib.rs", "")
+        .file("build.rs", r#"
+            fn main() {
+               // println!("{}", std::env::var("CARGO_BIN_FILE_BAR").expect("CARGO_BIN_FILE_BAR"));         // TODO: uncomment
+               // println!("{}", std::env::var("CARGO_BIN_FILE_BAR_bar").expect("CARGO_BIN_FILE_BAR_bar")); // TODO: uncomment
+            }
+        "#)
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file("bar/src/main.rs", "fn main() {}")
+        .build();
+    p.cargo("build -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_stderr(
+            "\
+[COMPILING] foo [..]
+[COMPILING] bar v0.5.0 ([CWD]/bar)
+[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]",
+        )
+        .run();
+
+    assert_eq!(
+        p.glob("target/debug/artifact/bar-*/bin/bar-*.d").count(),
+        1,
+        "artifacts are placed into their own output directory to not possibly clash"
+    );
+    assert!(
+        !p.bin("bar").is_file(),
+        "artifacts are located in their own directory, exclusively, and won't be lifted up"
+    );
+}
+
+#[cargo_test]
 fn allow_artifact_and_no_artifact_dep_to_same_package_within_different_dep_categories() {
     let p = project()
         .file(
@@ -188,6 +234,10 @@ fn allow_artifact_and_no_artifact_dep_to_same_package_within_different_dep_categ
         )
         .run();
 }
+
+#[cargo_test]
+#[ignore]
+fn disallow_using_example_binaries_as_artifacts() {}
 
 #[cargo_test]
 #[ignore]
@@ -329,7 +379,7 @@ fn check_rust_libs_are_available_with_lib_true() {
                 authors = []
                 
                 [dependencies]
-                bar =         { path = "bar/", artifact = "bin", lib = true }
+                bar = { path = "bar/", artifact = "bin", lib = true }
             "#,
         )
         .file(

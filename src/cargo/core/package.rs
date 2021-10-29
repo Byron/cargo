@@ -555,7 +555,7 @@ impl<'cfg> PackageSet<'cfg> {
 
     /// Check if there are any dependency packages that violate artifact constraints
     /// to instantly abort, or that do not have any libs which results in warnings.
-    pub(crate) fn warn_no_lib_packages_and_validate_artifacts_constraints(
+    pub(crate) fn warn_no_lib_packages_and_artifact_libs_overlapping_deps(
         &self,
         ws: &Workspace<'cfg>,
         resolve: &Resolve,

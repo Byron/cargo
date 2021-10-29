@@ -1097,6 +1097,7 @@ fn generate_targets(
                     features.clone(),
                     /*is_std*/ false,
                     /*dep_hash*/ 0,
+                    /*artifact*/ false,
                 );
                 units.insert(unit);
             }
@@ -1658,6 +1659,7 @@ fn traverse_and_share(
         unit.features.clone(),
         unit.is_std,
         new_dep_hash,
+        unit.artifact,
     );
     assert!(memo.insert(unit.clone(), new_unit.clone()).is_none());
     new_graph.entry(new_unit.clone()).or_insert(new_deps);
