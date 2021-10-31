@@ -217,11 +217,6 @@ fn rustc(cx: &mut Context<'_, '_>, unit: &Unit, exec: &Arc<dyn Executor>) -> Car
     let outputs = cx.outputs(unit)?;
     let root = cx.files().out_dir(unit);
 
-    // Artifacts are in a different location than typical units
-    if unit.artifact {
-        paths::create_dir_all(&root)?;
-    }
-
     // Prepare the native lib state (extra `-L` and `-l` flags).
     let build_script_outputs = Arc::clone(&cx.build_script_outputs);
     let current_id = unit.pkg.package_id();
@@ -266,6 +261,7 @@ fn rustc(cx: &mut Context<'_, '_>, unit: &Unit, exec: &Arc<dyn Executor>) -> Car
     let fingerprint_dir = cx.files().fingerprint_dir(unit);
     let script_metadata = cx.find_build_script_metadata(unit);
     let is_local = unit.is_local();
+    let is_artifact = unit.artifact;
 
     return Ok(Work::new(move |state| {
         // Only at runtime have we discovered what the extra -L and -l
@@ -275,6 +271,13 @@ fn rustc(cx: &mut Context<'_, '_>, unit: &Unit, exec: &Arc<dyn Executor>) -> Car
         // located somewhere in there.
         // Finally, if custom environment variables have been produced by
         // previous build scripts, we include them in the rustc invocation.
+
+        // Artifacts are in a different location than typical units, hence
+        // we must assure the crate-dependent directory is present.
+        if is_artifact {
+            paths::create_dir_all(&root)?;
+        }
+
         if let Some(build_scripts) = build_scripts {
             let script_outputs = build_script_outputs.lock().unwrap();
             if !build_plan {
