@@ -1,5 +1,5 @@
 use cargo_test_support::registry::Package;
-use cargo_test_support::{basic_bin_manifest, basic_manifest, compare, project, publish, registry};
+use cargo_test_support::{basic_bin_manifest, basic_manifest, project, publish, registry, Project};
 
 #[cargo_test]
 fn check_with_invalid_artifact_dependency() {
@@ -175,8 +175,8 @@ fn build_script_with_bin_artifact() {
         .file("build.rs", r#"
             fn main() {
                println!("{}", std::env::var("CARGO_BIN_DIR_BAR").expect("CARGO_BIN_DIR_BAR"));
-               // println!("{}", std::env::var("CARGO_BIN_FILE_BAR").expect("CARGO_BIN_FILE_BAR"));         // TODO: uncomment
-               // println!("{}", std::env::var("CARGO_BIN_FILE_BAR_bar").expect("CARGO_BIN_FILE_BAR_bar")); // TODO: uncomment
+               println!("{}", std::env::var("CARGO_BIN_FILE_BAR").expect("CARGO_BIN_FILE_BAR"));
+               println!("{}", std::env::var("CARGO_BIN_FILE_BAR_bar").expect("CARGO_BIN_FILE_BAR_bar"));
             }
         "#)
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
@@ -192,34 +192,43 @@ fn build_script_with_bin_artifact() {
         )
         .run();
 
-    // TODO(ST): figure out why windows has trouble with that, not finding the '.d' file which already is a standin for the
-    // executable to avoid having to deal with the fingerprint.
+    let build_script_output = build_script_output_string(&p, "foo");
     #[cfg(not(windows))]
-    assert_eq!(
-        p.glob("target/debug/artifact/bar-*/bin/bar-*.d").count(),
-        1,
-        "artifacts are placed into their own output directory to not possibly clash"
-    );
+    {
+        cargo_test_support::compare::match_exact(
+            "[..]/artifact/bar-[..]/bin\n\
+        [..]/artifact/bar-[..]/bin/bar-[..]\n\
+        [..]/artifact/bar-[..]/bin/bar-[..]",
+            &build_script_output,
+            "we need the binary directory for this artifact",
+            "",
+            None,
+        )
+        .unwrap();
+    }
+    #[cfg(windows)]
+    {
+        cargo_test_support::compare::match_exact(
+            &format!(
+                "[..]/artifact/bar-[..]/bin\n\
+        [..]/artifact/bar-[..]/bin/bar{}\n\
+        [..]/artifact/bar-[..]/bin/bar{}",
+                std::env::consts::EXE_SUFFIX,
+                std::env::consts::EXE_SUFFIX
+            ),
+            &build_script_output,
+            "we need the binary directory for this artifact",
+            "",
+            None,
+        )
+        .unwrap();
+    }
+
     assert!(
         !p.bin("bar").is_file(),
         "artifacts are located in their own directory, exclusively, and won't be lifted up"
     );
-
-    let actual = std::fs::read_to_string(
-        p.glob("target/debug/build/foo-*/output")
-            .next()
-            .unwrap()
-            .unwrap(),
-    )
-    .unwrap();
-    compare::match_exact(
-        "[..]/artifact/bar-[..]/bin",
-        &actual,
-        "we need the binary directory for this artifact",
-        "",
-        None,
-    )
-    .unwrap();
+    assert_artifact_executable_output(&p, "debug", "bar");
 }
 
 #[cargo_test]
@@ -802,4 +811,44 @@ fn no_doc_for_non_lib_even_though_present() {
     assert!(p.root().join("target/doc").is_dir());
     assert!(p.root().join("target/doc/foo/index.html").is_file());
     assert!(p.root().join("target/doc/bar/index.html").is_file());
+}
+
+fn assert_artifact_executable_output(p: &Project, target_name: &str, bin_name: &str) {
+    let dep_name = bin_name;
+    #[cfg(not(windows))]
+    {
+        assert_eq!(
+            p.glob(format!(
+                "target/{}/artifact/{}-*/bin/{}-*.d",
+                target_name, dep_name, bin_name
+            ))
+            .count(),
+            1,
+            "artifacts are placed into their own output directory to not possibly clash"
+        );
+    }
+    #[cfg(windows)]
+    {
+        assert_eq!(
+            p.glob(format!(
+                "target/{}/artifact/{}-*/bin/{}{}",
+                target_name,
+                dep_name,
+                bin_name,
+                std::env::consts::EXE_SUFFIX
+            ))
+            .count(),
+            1,
+            "artifacts are placed into their own output directory to not possibly clash"
+        );
+    }
+}
+
+fn build_script_output_string(p: &Project, package_name: &str) -> String {
+    let paths = p
+        .glob(format!("target/debug/build/{}-*/output", package_name))
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(paths.len(), 1);
+    std::fs::read_to_string(&paths[0]).unwrap()
 }
