@@ -2,6 +2,7 @@ use super::job::{Freshness, Job, Work};
 use super::{fingerprint, Context, LinkType, Unit};
 use crate::core::compiler::context::Metadata;
 use crate::core::compiler::job_queue::JobState;
+use crate::core::compiler::FileFlavor;
 use crate::core::{profiles::ProfileRoot, PackageId, Target};
 use crate::util::errors::CargoResult;
 use crate::util::machine_message::{self, Message};
@@ -202,6 +203,23 @@ fn build_work(cx: &mut Context<'_, '_>, unit: &Unit) -> CargoResult<Job> {
         .env("RUSTC", &bcx.rustc().path)
         .env("RUSTDOC", &*bcx.config.rustdoc()?)
         .inherit_jobserver(&cx.jobserver);
+    // Find all artifact dependencies and make their file and containing directory discoverable using environment variables.
+    for unit_dep in dependencies.iter().filter(|d| d.unit.artifact) {
+        for out_file in cx
+            .outputs(&unit_dep.unit)?
+            .iter()
+            .filter_map(|f| (f.flavor == FileFlavor::Normal).then(|| &f.path))
+        {
+            // TODO(ST): transfer the artifact type to avoid having to search the Dependency for the unit here
+            cmd.env(
+                &format!(
+                    "CARGO_BIN_DIR_{}",
+                    unit_dep.extern_crate_name.to_uppercase()
+                ),
+                out_file.parent().expect("parent dir for artifacts"),
+            );
+        }
+    }
 
     if let Some(linker) = &bcx.target_data.target_config(unit.kind).linker {
         cmd.env(

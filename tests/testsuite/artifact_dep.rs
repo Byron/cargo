@@ -1,5 +1,5 @@
 use cargo_test_support::registry::Package;
-use cargo_test_support::{basic_bin_manifest, basic_manifest, project, publish, registry};
+use cargo_test_support::{basic_bin_manifest, basic_manifest, compare, project, publish, registry};
 
 #[cargo_test]
 fn check_with_invalid_artifact_dependency() {
@@ -174,6 +174,7 @@ fn build_script_with_bin_artifact() {
         .file("src/lib.rs", "")
         .file("build.rs", r#"
             fn main() {
+               println!("{}", std::env::var("CARGO_BIN_DIR_BAR").expect("CARGO_BIN_DIR_BAR"));
                // println!("{}", std::env::var("CARGO_BIN_FILE_BAR").expect("CARGO_BIN_FILE_BAR"));         // TODO: uncomment
                // println!("{}", std::env::var("CARGO_BIN_FILE_BAR_bar").expect("CARGO_BIN_FILE_BAR_bar")); // TODO: uncomment
             }
@@ -203,6 +204,22 @@ fn build_script_with_bin_artifact() {
         !p.bin("bar").is_file(),
         "artifacts are located in their own directory, exclusively, and won't be lifted up"
     );
+
+    let actual = std::fs::read_to_string(
+        p.glob("target/debug/build/foo-*/output")
+            .next()
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    compare::match_exact(
+        "[..]/artifact/bar-[..]/bin",
+        &actual,
+        "we need the binary directory for this artifact",
+        "",
+        None,
+    )
+    .unwrap();
 }
 
 #[cargo_test]
