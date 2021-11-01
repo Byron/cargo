@@ -152,6 +152,7 @@ fn attach_std_deps(
                 unit: unit.clone(),
                 unit_for: UnitFor::new_normal(),
                 extern_crate_name: unit.pkg.name(),
+                dep_name: None,
                 // TODO: Does this `public` make sense?
                 public: true,
                 noprelude: true,
@@ -772,11 +773,12 @@ fn new_unit_dep_with_profile(
     artifact: bool,
 ) -> CargoResult<UnitDep> {
     // TODO: consider making extern_crate_name return InternedString?
-    let extern_crate_name = InternedString::new(&state.resolve().extern_crate_name(
+    let (extern_crate_name, dep_name) = state.resolve().extern_crate_name_and_dep_name(
         parent.pkg.package_id(),
         pkg.package_id(),
         target,
-    )?);
+    )?;
+    let extern_crate_name = InternedString::new(&extern_crate_name);
     let public = state
         .resolve()
         .is_public_dep(parent.pkg.package_id(), pkg.package_id());
@@ -797,6 +799,7 @@ fn new_unit_dep_with_profile(
         unit,
         unit_for,
         extern_crate_name,
+        dep_name,
         public,
         noprelude: false,
     })

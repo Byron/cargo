@@ -212,7 +212,10 @@ fn build_work(cx: &mut Context<'_, '_>, unit: &Unit) -> CargoResult<Job> {
             .filter_map(|f| (f.flavor == FileFlavor::Normal).then(|| &f.path))
         {
             let artifact_type_upper = unit_artifact_type_name_upper(&unit_dep.unit);
-            let dep_name_upper = unit_dep.extern_crate_name.to_uppercase();
+            let dep_name_upper = unit_dep
+                .dep_name
+                .unwrap_or(unit_dep.unit.pkg.name())
+                .to_uppercase();
             cmd.env(
                 &format!("CARGO_{}_DIR_{}", artifact_type_upper, dep_name_upper),
                 artifact_path.parent().expect("parent dir for artifacts"),

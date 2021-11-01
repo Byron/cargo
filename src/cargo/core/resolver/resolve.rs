@@ -295,12 +295,12 @@ unable to verify that `{0}` is the same as when the lockfile was generated
         &self.metadata
     }
 
-    pub fn extern_crate_name(
+    pub fn extern_crate_name_and_dep_name(
         &self,
         from: PackageId,
         to: PackageId,
         to_target: &Target,
-    ) -> CargoResult<String> {
+    ) -> CargoResult<(String, Option<InternedString>)> {
         let empty_set: HashSet<Dependency> = HashSet::new();
         let deps = if from == to {
             &empty_set
@@ -311,7 +311,6 @@ unable to verify that `{0}` is the same as when the lockfile was generated
         let crate_name = to_target.crate_name();
         let mut names = deps.iter().map(|d| {
             d.explicit_name_in_toml()
-                .or_else(|| d.artifact().map(|_kinds| to.name()))
                 .map(|s| s.as_str().replace("-", "_"))
                 .unwrap_or_else(|| crate_name.clone())
         });
@@ -324,7 +323,8 @@ unable to verify that `{0}` is the same as when the lockfile was generated
                 to,
             );
         }
-        Ok(name)
+        let dep_name = deps.iter().filter_map(|d| d.explicit_name_in_toml()).next();
+        Ok((name, dep_name))
     }
 
     fn dependencies_listed(&self, from: PackageId, to: PackageId) -> &HashSet<Dependency> {
