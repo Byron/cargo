@@ -246,7 +246,7 @@ fn build_script_with_bin_artifacts() {
         !p.bin("bar").is_file(),
         "artifacts are located in their own directory, exclusively, and won't be lifted up"
     );
-    assert_artifact_executable_output(&p, "debug", "bar");
+    assert_artifact_executable_output(&p, "debug", "bar", "bar");
 }
 
 #[cargo_test]
@@ -295,7 +295,7 @@ fn build_script_with_bin_artifact_and_lib_false() {
 }
 
 #[cargo_test]
-fn build_script_with_bin_artifact_and_lib_true() {
+fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
     let p = project()
         .file(
             "Cargo.toml",
@@ -306,7 +306,7 @@ fn build_script_with_bin_artifact_and_lib_true() {
                 authors = []
                 
                 [build-dependencies]
-                bar = { path = "bar/", artifact = "bin", lib = true }
+                bar = { path = "bar/", artifact = "bin:baz-suffix", lib = true }
             "#,
         )
         .file("src/lib.rs", "")
@@ -315,13 +315,28 @@ fn build_script_with_bin_artifact_and_lib_true() {
                bar::print_env()
             }
         "#)
-        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file(
+            "bar/Cargo.toml",
+            r#"
+                [package]
+                name = "bar"
+                version = "0.5.0"
+                authors = []
+                
+                [[bin]]
+                name = "bar"
+                
+                [[bin]]
+                name = "baz-suffix"
+            "#,
+        )
         .file("bar/src/main.rs", "fn main() {}")
         .file("bar/src/lib.rs", r#"
             pub fn print_env() {
                println!("{}", std::env::var("CARGO_BIN_DIR_BAR").expect("CARGO_BIN_DIR_BAR"));
-               println!("{}", std::env::var("CARGO_BIN_FILE_BAR").expect("CARGO_BIN_FILE_BAR"));
-               println!("{}", std::env::var("CARGO_BIN_FILE_BAR_bar").expect("CARGO_BIN_FILE_BAR_bar"));
+               println!("{}", std::env::var("CARGO_BIN_FILE_BAR_baz-suffix").expect("CARGO_BIN_FILE_BAR_baz-suffix"));
+               assert!(std::env::var("CARGO_BIN_FILE_BAR").is_err(), "CARGO_BIN_FILE_BAR isn't set due to name mismatch");
+               assert!(std::env::var("CARGO_BIN_FILE_BAR_bar").is_err(), "CARGO_BIN_FILE_BAR_bar isn't set as binary isn't selected");
             }
         "#)
         .build();
@@ -336,14 +351,15 @@ fn build_script_with_bin_artifact_and_lib_true() {
         .run();
 
     let build_script_output = build_script_output_string(&p, "foo");
+    let msg = "we need the binary directory for this artifact and the binary itself";
+
     #[cfg(not(windows))]
     {
         cargo_test_support::compare::match_exact(
             "[..]/artifact/bar-[..]/bin\n\
-        [..]/artifact/bar-[..]/bin/bar-[..]\n\
-        [..]/artifact/bar-[..]/bin/bar-[..]",
+        [..]/artifact/bar-[..]/bin/baz_suffix-[..]",
             &build_script_output,
-            "we need the binary directory for this artifact",
+            msg,
             "",
             None,
         )
@@ -354,13 +370,11 @@ fn build_script_with_bin_artifact_and_lib_true() {
         cargo_test_support::compare::match_exact(
             &format!(
                 "[..]/artifact/bar-[..]/bin\n\
-        [..]/artifact/bar-[..]/bin/bar{}\n\
-        [..]/artifact/bar-[..]/bin/bar{}",
+                 [..]/artifact/bar-[..]/bin/baz_suffix{}",
                 std::env::consts::EXE_SUFFIX,
-                std::env::consts::EXE_SUFFIX
             ),
             &build_script_output,
-            "we need the binary directory for this artifact",
+            msg,
             "",
             None,
         )
@@ -371,7 +385,7 @@ fn build_script_with_bin_artifact_and_lib_true() {
         !p.bin("bar").is_file(),
         "artifacts are located in their own directory, exclusively, and won't be lifted up"
     );
-    assert_artifact_executable_output(&p, "debug", "bar");
+    assert_artifact_executable_output(&p, "debug", "bar", "baz_suffix");
 }
 
 #[cargo_test]
@@ -956,8 +970,12 @@ fn no_doc_for_non_lib_even_though_present() {
     assert!(p.root().join("target/doc/bar/index.html").is_file());
 }
 
-fn assert_artifact_executable_output(p: &Project, target_name: &str, bin_name: &str) {
-    let dep_name = bin_name;
+fn assert_artifact_executable_output(
+    p: &Project,
+    target_name: &str,
+    dep_name: &str,
+    bin_name: &str,
+) {
     #[cfg(not(windows))]
     {
         assert_eq!(
