@@ -208,6 +208,7 @@ fn build_script_with_bin_artifacts() {
         .run();
 
     let build_script_output = build_script_output_string(&p, "foo");
+    let msg = "we need the binary directory for this artifact along with all binary paths";
     #[cfg(not(windows))]
     {
         cargo_test_support::compare::match_exact(
@@ -216,7 +217,7 @@ fn build_script_with_bin_artifacts() {
         [..]/artifact/bar-[..]/bin/bar-[..]\n\
         [..]/artifact/bar-[..]/bin/baz-[..]",
             &build_script_output,
-            "we need the binary directory for this artifact",
+            msg,
             "",
             None,
         )
@@ -235,7 +236,7 @@ fn build_script_with_bin_artifacts() {
                 std::env::consts::EXE_SUFFIX
             ),
             &build_script_output,
-            "we need the binary directory for this artifact",
+            msg,
             "",
             None,
         )
@@ -306,20 +307,20 @@ fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
                 authors = []
                 
                 [build-dependencies]
-                bar = { path = "bar/", artifact = "bin:baz-suffix", lib = true }
+                bar-baz = { path = "bar/", artifact = "bin:baz-suffix", lib = true }
             "#,
         )
         .file("src/lib.rs", "")
         .file("build.rs", r#"
             fn main() {
-               bar::print_env()
+               bar_baz::print_env()
             }
         "#)
         .file(
             "bar/Cargo.toml",
             r#"
                 [package]
-                name = "bar"
+                name = "bar-baz"
                 version = "0.5.0"
                 authors = []
                 
@@ -333,10 +334,10 @@ fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
         .file("bar/src/main.rs", "fn main() {}")
         .file("bar/src/lib.rs", r#"
             pub fn print_env() {
-               println!("{}", std::env::var("CARGO_BIN_DIR_BAR").expect("CARGO_BIN_DIR_BAR"));
-               println!("{}", std::env::var("CARGO_BIN_FILE_BAR_baz-suffix").expect("CARGO_BIN_FILE_BAR_baz-suffix"));
-               assert!(std::env::var("CARGO_BIN_FILE_BAR").is_err(), "CARGO_BIN_FILE_BAR isn't set due to name mismatch");
-               assert!(std::env::var("CARGO_BIN_FILE_BAR_bar").is_err(), "CARGO_BIN_FILE_BAR_bar isn't set as binary isn't selected");
+               println!("{}", std::env::var("CARGO_BIN_DIR_BAR_BAZ").expect("CARGO_BIN_DIR_BAR_BAZ"));
+               println!("{}", std::env::var("CARGO_BIN_FILE_BAR_BAZ_baz-suffix").expect("CARGO_BIN_FILE_BAR_BAZ_baz-suffix"));
+               assert!(std::env::var("CARGO_BIN_FILE_BAR_BAZ").is_err(), "CARGO_BIN_FILE_BAR_BAZ isn't set due to name mismatch");
+               assert!(std::env::var("CARGO_BIN_FILE_BAR_BAZ_bar").is_err(), "CARGO_BIN_FILE_BAR_BAZ_bar isn't set as binary isn't selected");
             }
         "#)
         .build();
@@ -344,7 +345,7 @@ fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
         .masquerade_as_nightly_cargo()
         .with_stderr(
             "\
-[COMPILING] bar v0.5.0 ([CWD]/bar)
+[COMPILING] bar-baz v0.5.0 ([CWD]/bar)
 [COMPILING] foo [..]
 [FINISHED] dev [unoptimized + debuginfo] target(s) in [..]",
         )
@@ -356,8 +357,8 @@ fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
     #[cfg(not(windows))]
     {
         cargo_test_support::compare::match_exact(
-            "[..]/artifact/bar-[..]/bin\n\
-        [..]/artifact/bar-[..]/bin/baz_suffix-[..]",
+            "[..]/artifact/bar-baz-[..]/bin\n\
+        [..]/artifact/bar-baz-[..]/bin/baz_suffix-[..]",
             &build_script_output,
             msg,
             "",
@@ -369,8 +370,8 @@ fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
     {
         cargo_test_support::compare::match_exact(
             &format!(
-                "[..]/artifact/bar-[..]/bin\n\
-                 [..]/artifact/bar-[..]/bin/baz_suffix{}",
+                "[..]/artifact/bar-baz-[..]/bin\n\
+                 [..]/artifact/bar-baz-[..]/bin/baz_suffix{}",
                 std::env::consts::EXE_SUFFIX,
             ),
             &build_script_output,

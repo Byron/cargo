@@ -215,7 +215,8 @@ fn build_work(cx: &mut Context<'_, '_>, unit: &Unit) -> CargoResult<Job> {
             let dep_name_upper = unit_dep
                 .dep_name
                 .unwrap_or(unit_dep.unit.pkg.name())
-                .to_uppercase();
+                .to_uppercase()
+                .replace("-", "_");
             cmd.env(
                 &format!("CARGO_{}_DIR_{}", artifact_type_upper, dep_name_upper),
                 artifact_path.parent().expect("parent dir for artifacts"),
