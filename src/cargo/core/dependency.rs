@@ -453,6 +453,10 @@ impl Artifact {
     pub(crate) fn kinds(&self) -> &[ArtifactKind] {
         &self.inner
     }
+
+    pub(crate) fn is_lib(&self) -> bool {
+        self.is_lib
+    }
 }
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Ord, PartialOrd, Debug)]

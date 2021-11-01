@@ -243,7 +243,37 @@ fn compute_deps(
     }
 
     let id = unit.pkg.package_id();
-    let filtered_deps = state.deps(unit, unit_for);
+    let filtered_deps = state.deps_filtered(unit, unit_for, &|dep| {
+        // If this target is a build command, then we only want build
+        // dependencies, otherwise we want everything *other than* build
+        // dependencies.
+        if unit.target.is_custom_build() != dep.is_build() {
+            return false;
+        }
+
+        // If this dependency is **not** a transitive dependency, then it
+        // only applies to test/example targets.
+        if !dep.is_transitive()
+            && !unit.target.is_test()
+            && !unit.target.is_example()
+            && !unit.mode.is_doc_scrape()
+            && !unit.mode.is_any_test()
+        {
+            return false;
+        }
+
+        // Artifact dependencies are only counted as standard libraries if they are marked
+        // as 'library as well'
+        if let Some(artifact) = dep.artifact() {
+            if !artifact.is_lib() {
+                return false;
+            }
+        }
+
+        // If we've gotten past all that, then this dependency is
+        // actually used!
+        true
+    });
 
     let mut ret = Vec::new();
     let mut dev_deps = Vec::new();

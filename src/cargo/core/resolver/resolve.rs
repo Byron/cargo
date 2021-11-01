@@ -311,6 +311,7 @@ unable to verify that `{0}` is the same as when the lockfile was generated
         let crate_name = to_target.crate_name();
         let mut names = deps.iter().map(|d| {
             d.explicit_name_in_toml()
+                .or_else(|| d.artifact().map(|_kinds| to.name()))
                 .map(|s| s.as_str().replace("-", "_"))
                 .unwrap_or_else(|| crate_name.clone())
         });

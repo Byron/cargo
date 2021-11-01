@@ -157,7 +157,7 @@ fn warn_about_artifact_and_no_artifact_dep_to_same_package_within_the_same_dep_c
 }
 
 #[cargo_test]
-fn build_script_with_bin_artifact() {
+fn build_script_with_bin_artifacts() {
     let p = project()
         .file(
             "Cargo.toml",
@@ -177,9 +177,24 @@ fn build_script_with_bin_artifact() {
                println!("{}", std::env::var("CARGO_BIN_DIR_BAR").expect("CARGO_BIN_DIR_BAR"));
                println!("{}", std::env::var("CARGO_BIN_FILE_BAR").expect("CARGO_BIN_FILE_BAR"));
                println!("{}", std::env::var("CARGO_BIN_FILE_BAR_bar").expect("CARGO_BIN_FILE_BAR_bar"));
+               println!("{}", std::env::var("CARGO_BIN_FILE_BAR_baz").expect("CARGO_BIN_FILE_BAR_baz"));
             }
         "#)
-        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file(
+            "bar/Cargo.toml",
+            r#"
+                [package]
+                name = "bar"
+                version = "0.5.0"
+                authors = []
+                
+                [[bin]]
+                name = "bar"
+                
+                [[bin]]
+                name = "baz"
+            "#,
+        )
         .file("bar/src/main.rs", "fn main() {}")
         .build();
     p.cargo("build -Z unstable-options -Z bindeps")
@@ -198,7 +213,8 @@ fn build_script_with_bin_artifact() {
         cargo_test_support::compare::match_exact(
             "[..]/artifact/bar-[..]/bin\n\
         [..]/artifact/bar-[..]/bin/bar-[..]\n\
-        [..]/artifact/bar-[..]/bin/bar-[..]",
+        [..]/artifact/bar-[..]/bin/bar-[..]\n\
+        [..]/artifact/bar-[..]/bin/baz-[..]",
             &build_script_output,
             "we need the binary directory for this artifact",
             "",
@@ -212,7 +228,9 @@ fn build_script_with_bin_artifact() {
             &format!(
                 "[..]/artifact/bar-[..]/bin\n\
         [..]/artifact/bar-[..]/bin/bar{}\n\
+        [..]/artifact/bar-[..]/bin/bar{}\n\
         [..]/artifact/bar-[..]/bin/bar{}",
+                std::env::consts::EXE_SUFFIX,
                 std::env::consts::EXE_SUFFIX,
                 std::env::consts::EXE_SUFFIX
             ),
@@ -232,7 +250,52 @@ fn build_script_with_bin_artifact() {
 }
 
 #[cargo_test]
-fn build_script_with_bin_artifact_and_lib() {
+fn build_script_with_bin_artifact_and_lib_false() {
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                
+                [build-dependencies]
+                bar = { path = "bar/", artifact = "bin" }
+            "#,
+        )
+        .file("src/lib.rs", "")
+        .file(
+            "build.rs",
+            r#"
+            fn main() {
+               bar::doit()
+            }
+        "#,
+        )
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file("bar/src/main.rs", "fn main() { bar::doit(); }")
+        .file(
+            "bar/src/lib.rs",
+            r#"
+            pub fn doit() {
+               panic!("cannot be called from build script due to lib = false");
+            }
+        "#,
+        )
+        .build();
+    p.cargo("build -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_status(101)
+        .with_stderr_contains(
+            "error[E0433]: failed to resolve: use of undeclared crate or module `bar`",
+        )
+        .with_stderr_contains(" --> build.rs:3:16")
+        .run();
+}
+
+#[cargo_test]
+fn build_script_with_bin_artifact_and_lib_true() {
     let p = project()
         .file(
             "Cargo.toml",
