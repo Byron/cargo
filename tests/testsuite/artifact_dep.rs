@@ -232,6 +232,86 @@ fn build_script_with_bin_artifact() {
 }
 
 #[cargo_test]
+fn build_script_with_bin_artifact_and_lib() {
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                
+                [build-dependencies]
+                bar = { path = "bar/", artifact = "bin", lib = true }
+            "#,
+        )
+        .file("src/lib.rs", "")
+        .file("build.rs", r#"
+            fn main() {
+               bar::print_env()
+            }
+        "#)
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file("bar/src/main.rs", "fn main() {}")
+        .file("bar/src/lib.rs", r#"
+            pub fn print_env() {
+               println!("{}", std::env::var("CARGO_BIN_DIR_BAR").expect("CARGO_BIN_DIR_BAR"));
+               println!("{}", std::env::var("CARGO_BIN_FILE_BAR").expect("CARGO_BIN_FILE_BAR"));
+               println!("{}", std::env::var("CARGO_BIN_FILE_BAR_bar").expect("CARGO_BIN_FILE_BAR_bar"));
+            }
+        "#)
+        .build();
+    p.cargo("build -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_stderr(
+            "\
+[COMPILING] bar v0.5.0 ([CWD]/bar)
+[COMPILING] foo [..]
+[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]",
+        )
+        .run();
+
+    let build_script_output = build_script_output_string(&p, "foo");
+    #[cfg(not(windows))]
+    {
+        cargo_test_support::compare::match_exact(
+            "[..]/artifact/bar-[..]/bin\n\
+        [..]/artifact/bar-[..]/bin/bar-[..]\n\
+        [..]/artifact/bar-[..]/bin/bar-[..]",
+            &build_script_output,
+            "we need the binary directory for this artifact",
+            "",
+            None,
+        )
+        .unwrap();
+    }
+    #[cfg(windows)]
+    {
+        cargo_test_support::compare::match_exact(
+            &format!(
+                "[..]/artifact/bar-[..]/bin\n\
+        [..]/artifact/bar-[..]/bin/bar{}\n\
+        [..]/artifact/bar-[..]/bin/bar{}",
+                std::env::consts::EXE_SUFFIX,
+                std::env::consts::EXE_SUFFIX
+            ),
+            &build_script_output,
+            "we need the binary directory for this artifact",
+            "",
+            None,
+        )
+        .unwrap();
+    }
+
+    assert!(
+        !p.bin("bar").is_file(),
+        "artifacts are located in their own directory, exclusively, and won't be lifted up"
+    );
+    assert_artifact_executable_output(&p, "debug", "bar");
+}
+
+#[cargo_test]
 fn allow_artifact_and_no_artifact_dep_to_same_package_within_different_dep_categories() {
     let p = project()
         .file(
