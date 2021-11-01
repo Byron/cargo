@@ -174,10 +174,21 @@ fn build_script_with_bin_artifacts() {
         .file("src/lib.rs", "")
         .file("build.rs", r#"
             fn main() {
-               println!("{}", std::env::var("CARGO_BIN_DIR_BAR").expect("CARGO_BIN_DIR_BAR"));
-               println!("{}", std::env::var("CARGO_BIN_FILE_BAR").expect("CARGO_BIN_FILE_BAR"));
-               println!("{}", std::env::var("CARGO_BIN_FILE_BAR_bar").expect("CARGO_BIN_FILE_BAR_bar"));
-               println!("{}", std::env::var("CARGO_BIN_FILE_BAR_baz").expect("CARGO_BIN_FILE_BAR_baz"));
+                let baz: std::path::PathBuf = std::env::var("CARGO_BIN_FILE_BAR_baz").expect("CARGO_BIN_FILE_BAR_baz").into();
+                println!("{}", baz.display());
+                // assert!(baz.is_file()); // TODO(ST): make this work, _may_ fail on CI
+                
+                let dir: std::path::PathBuf = std::env::var("CARGO_BIN_DIR_BAR").expect("CARGO_BIN_DIR_BAR").into();
+                println!("{}", dir.display());
+                assert!(dir.is_dir());
+                
+                let bar: std::path::PathBuf = std::env::var("CARGO_BIN_FILE_BAR").expect("CARGO_BIN_FILE_BAR").into();
+                println!("{}", bar.display());
+                // assert!(bar.is_file()); // TODO(ST): make this work, _may_ fail on CI
+                
+                let bar2: std::path::PathBuf = std::env::var("CARGO_BIN_FILE_BAR_bar").expect("CARGO_BIN_FILE_BAR_bar").into();
+                println!("{}", bar2.display());
+                assert_eq!(bar, bar2);
             }
         "#)
         .file(
@@ -187,15 +198,10 @@ fn build_script_with_bin_artifacts() {
                 name = "bar"
                 version = "0.5.0"
                 authors = []
-                
-                [[bin]]
-                name = "bar"
-                
-                [[bin]]
-                name = "baz"
             "#,
         )
-        .file("bar/src/main.rs", "fn main() {}")
+        .file("bar/src/bin/bar.rs", "fn main() {}")
+        .file("bar/src/bin/baz.rs", "fn main() {}")
         .build();
     p.cargo("build -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
@@ -212,10 +218,10 @@ fn build_script_with_bin_artifacts() {
     #[cfg(not(windows))]
     {
         cargo_test_support::compare::match_exact(
-            "[..]/artifact/bar-[..]/bin\n\
-        [..]/artifact/bar-[..]/bin/bar-[..]\n\
-        [..]/artifact/bar-[..]/bin/bar-[..]\n\
-        [..]/artifact/bar-[..]/bin/baz-[..]",
+            "[..]/artifact/bar-[..]/bin/baz-[..]\n\
+             [..]/artifact/bar-[..]/bin\n\
+             [..]/artifact/bar-[..]/bin/bar-[..]\n\
+             [..]/artifact/bar-[..]/bin/bar-[..]",
             &build_script_output,
             msg,
             "",
@@ -227,10 +233,10 @@ fn build_script_with_bin_artifacts() {
     {
         cargo_test_support::compare::match_exact(
             &format!(
-                "[..]/artifact/bar-[..]/bin\n\
-        [..]/artifact/bar-[..]/bin/bar{}\n\
-        [..]/artifact/bar-[..]/bin/bar{}\n\
-        [..]/artifact/bar-[..]/bin/bar{}",
+                "[..]/artifact/bar-[..]/bin/baz{}\n\
+                 [..]/artifact/bar-[..]/bin\n\
+                 [..]/artifact/bar-[..]/bin/bar{}\n\
+                 [..]/artifact/bar-[..]/bin/bar{}",
                 std::env::consts::EXE_SUFFIX,
                 std::env::consts::EXE_SUFFIX,
                 std::env::consts::EXE_SUFFIX
@@ -334,10 +340,14 @@ fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
         .file("bar/src/main.rs", "fn main() {}")
         .file("bar/src/lib.rs", r#"
             pub fn print_env() {
-               println!("{}", std::env::var("CARGO_BIN_DIR_BAR_BAZ").expect("CARGO_BIN_DIR_BAR_BAZ"));
-               println!("{}", std::env::var("CARGO_BIN_FILE_BAR_BAZ_baz-suffix").expect("CARGO_BIN_FILE_BAR_BAZ_baz-suffix"));
-               assert!(std::env::var("CARGO_BIN_FILE_BAR_BAZ").is_err(), "CARGO_BIN_FILE_BAR_BAZ isn't set due to name mismatch");
-               assert!(std::env::var("CARGO_BIN_FILE_BAR_BAZ_bar").is_err(), "CARGO_BIN_FILE_BAR_BAZ_bar isn't set as binary isn't selected");
+                let dir: std::path::PathBuf = std::env::var("CARGO_BIN_DIR_BAR_BAZ").expect("CARGO_BIN_DIR_BAR_BAZ").into();
+                let bin: std::path::PathBuf = std::env::var("CARGO_BIN_FILE_BAR_BAZ_baz-suffix").expect("CARGO_BIN_FILE_BAR_BAZ_baz-suffix").into();
+                println!("{}", dir.display());
+                println!("{}", bin.display());
+                assert!(dir.is_dir());
+                assert!(bin.is_file());
+                assert!(std::env::var("CARGO_BIN_FILE_BAR_BAZ").is_err(), "CARGO_BIN_FILE_BAR_BAZ isn't set due to name mismatch");
+                assert!(std::env::var("CARGO_BIN_FILE_BAR_BAZ_bar").is_err(), "CARGO_BIN_FILE_BAR_BAZ_bar isn't set as binary isn't selected");
             }
         "#)
         .build();

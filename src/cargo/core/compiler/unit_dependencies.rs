@@ -456,7 +456,7 @@ fn compute_deps_custom_build(
             script_unit_for,
             artifact_build_deps,
             state,
-            CompileKind::Host,
+            CompileKind::Host, // TODO(ST): probably here we have to handle the artifact target more properly.
         )?;
         artifact_units.push(compile_script_unit);
         Ok(artifact_units)
