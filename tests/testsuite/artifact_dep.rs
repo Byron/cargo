@@ -457,6 +457,7 @@ fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
 
 // TODO(ST): impl this, and add static and cdylib artifacts, too.
 #[cargo_test]
+#[ignore]
 fn lib_with_selected_dashed_bin_artifact_and_lib_true() {
     let p = project()
         .file(
@@ -553,6 +554,11 @@ fn allow_artifact_and_no_artifact_dep_to_same_package_within_different_dep_categ
 #[cargo_test]
 #[ignore]
 fn disallow_using_example_binaries_as_artifacts() {}
+
+// I think compiles it, so 'env!()' must work and be set, along with built artifacts.
+#[cargo_test]
+#[ignore]
+fn rustdoc_works_on_libs_with_artifacts() {}
 
 #[cargo_test]
 #[ignore]

@@ -503,7 +503,7 @@ fn match_artifacts_kind_with_targets<'a>(
     targets: &'a [Target],
 ) -> CargoResult<HashSet<&'a Target>> {
     let mut out = HashSet::new();
-    let artifact_requirements = artifact_dep.artifact().expect("artifact preset");
+    let artifact_requirements = artifact_dep.artifact().expect("artifact present");
     for artifact_kind in artifact_requirements.kinds() {
         let start = out.len();
         match artifact_kind {

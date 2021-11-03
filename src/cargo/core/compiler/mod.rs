@@ -620,7 +620,7 @@ fn prepare_rustc(
         base.inherit_jobserver(&cx.jobserver);
     }
     build_base_args(cx, &mut base, unit, crate_types)?;
-    build_deps_args(&mut base, cx, unit)?;
+    build_deps_args(&mut base, cx, unit, ProcessKind::Rustc)?;
     Ok(base)
 }
 
@@ -698,7 +698,7 @@ fn rustdoc(cx: &mut Context<'_, '_>, unit: &Unit) -> CargoResult<Work> {
         }
     }
 
-    build_deps_args(&mut rustdoc, cx, unit)?;
+    build_deps_args(&mut rustdoc, cx, unit, ProcessKind::Rustdoc)?;
     rustdoc::add_root_urls(cx, unit, &mut rustdoc)?;
 
     rustdoc.args(bcx.rustdocflags_args(unit));
@@ -1087,6 +1087,7 @@ fn build_deps_args(
     cmd: &mut ProcessBuilder,
     cx: &mut Context<'_, '_>,
     unit: &Unit,
+    kind: ProcessKind,
 ) -> CargoResult<()> {
     let bcx = cx.bcx;
     cmd.arg("-L").arg(&{
@@ -1106,6 +1107,10 @@ fn build_deps_args(
     }
 
     let deps = cx.unit_deps(unit);
+
+    if let ProcessKind::Rustc = kind {
+        artifact::set_env(cx, deps, cmd)?;
+    }
 
     // If there is not one linkable target but should, rustc fails later
     // on if there is an `extern crate` for it. This may turn into a hard
@@ -1550,4 +1555,9 @@ fn replay_output_cache(
         }
         Ok(())
     })
+}
+
+enum ProcessKind {
+    Rustc,
+    Rustdoc,
 }
