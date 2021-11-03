@@ -173,10 +173,22 @@ fn build_script_with_bin_artifacts() {
         )
         .file("src/lib.rs", "")
         .file("build.rs", r#"
+            // TODO(ST): figure out why the file may not be there right away
+            fn assert_file_with_tolerance(path: &std::path::Path) {
+                if path.is_file() {
+                    return
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                if path.is_file() {
+                    return
+                }
+                panic!("File at '{}' wasn't present even after retrying", path.display());
+            }
+            
             fn main() {
                 let baz: std::path::PathBuf = std::env::var("CARGO_BIN_FILE_BAR_baz").expect("CARGO_BIN_FILE_BAR_baz").into();
                 println!("{}", baz.display());
-                // assert!(baz.is_file()); // TODO(ST): make this work, _may_ fail on CI
+                assert_file_with_tolerance(&baz); 
                 
                 let dir: std::path::PathBuf = std::env::var("CARGO_BIN_DIR_BAR").expect("CARGO_BIN_DIR_BAR").into();
                 println!("{}", dir.display());
@@ -184,7 +196,7 @@ fn build_script_with_bin_artifacts() {
                 
                 let bar: std::path::PathBuf = std::env::var("CARGO_BIN_FILE_BAR").expect("CARGO_BIN_FILE_BAR").into();
                 println!("{}", bar.display());
-                // assert!(bar.is_file()); // TODO(ST): make this work, _may_ fail on CI
+                assert_file_with_tolerance(&bar); 
                 
                 let bar2: std::path::PathBuf = std::env::var("CARGO_BIN_FILE_BAR_bar").expect("CARGO_BIN_FILE_BAR_bar").into();
                 println!("{}", bar2.display());
