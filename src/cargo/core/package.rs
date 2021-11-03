@@ -578,36 +578,6 @@ impl<'cfg> PackageSet<'cfg> {
                 )
                 .collect();
 
-                // TODO: try to move these checks to later stage where a better error can be produced, and maybe where
-                //       the checks are happening as a side-effect of creating actual build targets.
-                for dep_ids_and_deps_for_kind in
-                    [DepKind::Normal, DepKind::Build, DepKind::Development]
-                        .iter()
-                        .map(|&dep_kind| dep_pkgs_to_deps.iter().filter_map(move |(_dep_id, deps)| {
-                                    let mut iter = deps
-                                        .iter()
-                                        .filter(move |dep| dep.kind() == dep_kind)
-                                        .peekable();
-                                    iter.peek().is_some().then(|| iter.collect::<Vec<_>>())
-                                })
-                            )
-                {
-                    for deps in dep_ids_and_deps_for_kind {
-                        let artifact_name = deps
-                            .iter()
-                            .find_map(|dep| dep.artifact().is_some().then(|| dep.name_in_toml()));
-                        let non_artifact_name = deps
-                            .iter()
-                            .find_map(|dep| dep.artifact().is_none().then(|| dep.name_in_toml()));
-                        if let (Some(artifact_name), Some(non_artifact_name)) =
-                            (artifact_name, non_artifact_name)
-                        {
-                            ws.config().shell().warn(format!(r#"Consider setting 'lib = true' in artifact dependency '{}' instead of declaring '{}' separately."#,
-                                                             artifact_name, non_artifact_name))?;
-                        }
-                    }
-                }
-
                 let dep_pkgs = dep_pkgs_to_deps
                     .iter()
                     .filter(|(_id, deps)| deps.iter().all(|dep| dep.maybe_lib()))

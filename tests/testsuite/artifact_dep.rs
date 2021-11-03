@@ -114,6 +114,7 @@ fn build_without_nightly_shows_warnings_and_ignores_them() {
         .file("bar/src/lib.rs", "")
         .build();
     p.cargo("check")
+        // TODO(ST): use backticks instead of single quotes for quotation for consistency.
         .with_stderr(
             "\
 [WARNING] 'lib' specifiers need an 'artifact = …' value and would fail the operation when '-Z bindeps' is provided.
@@ -126,7 +127,7 @@ fn build_without_nightly_shows_warnings_and_ignores_them() {
 }
 
 #[cargo_test]
-fn warn_about_artifact_and_no_artifact_dep_to_same_package_within_the_same_dep_category() {
+fn disallow_artifact_and_no_artifact_dep_to_same_package_within_the_same_dep_category() {
     let p = project()
         .file(
             "Cargo.toml",
@@ -143,15 +144,13 @@ fn warn_about_artifact_and_no_artifact_dep_to_same_package_within_the_same_dep_c
         )
         .file("src/lib.rs", "")
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
-        .file("bar/src/main.rs", "")
+        .file("bar/src/main.rs", "fn main() {}")
         .build();
     p.cargo("check -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
+        .with_status(101)
         .with_stderr(
-            "\
-[WARNING] Consider setting 'lib = true' in artifact dependency 'bar' instead of declaring 'bar_stable' separately.
-[CHECKING] foo [..]
-[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]",
+            "[ERROR] the crate `foo v0.0.0 ([CWD])` depends on crate `bar v0.5.0 ([CWD]/bar)` multiple times with different names",
         )
         .run();
 }
@@ -174,22 +173,10 @@ fn build_script_with_bin_artifacts() {
         )
         .file("src/lib.rs", "")
         .file("build.rs", r#"
-            // TODO(ST): figure out why the file may not be there right away
-            fn assert_file_with_tolerance(path: &std::path::Path) {
-                if path.is_file() {
-                    return
-                }
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                if path.is_file() {
-                    return
-                }
-                panic!("File at '{}' wasn't present even after retrying", path.display());
-            }
-            
             fn main() {
                 let baz: std::path::PathBuf = std::env::var("CARGO_BIN_FILE_BAR_baz").expect("CARGO_BIN_FILE_BAR_baz").into();
                 println!("{}", baz.display());
-                assert_file_with_tolerance(&baz); 
+                assert!(&baz.is_file()); 
                 
                 let dir: std::path::PathBuf = std::env::var("CARGO_BIN_DIR_BAR").expect("CARGO_BIN_DIR_BAR").into();
                 println!("{}", dir.display());
@@ -197,7 +184,7 @@ fn build_script_with_bin_artifacts() {
                 
                 let bar: std::path::PathBuf = std::env::var("CARGO_BIN_FILE_BAR").expect("CARGO_BIN_FILE_BAR").into();
                 println!("{}", bar.display());
-                assert_file_with_tolerance(&bar); 
+                assert!(&bar.is_file()); 
                 
                 let bar2: std::path::PathBuf = std::env::var("CARGO_BIN_FILE_BAR_bar").expect("CARGO_BIN_FILE_BAR_bar").into();
                 println!("{}", bar2.display());
@@ -218,12 +205,9 @@ fn build_script_with_bin_artifacts() {
         .build();
     p.cargo("build -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
-        .with_stderr(
-            "\
-[COMPILING] foo [..]
-[COMPILING] bar v0.5.0 ([CWD]/bar)
-[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]",
-        )
+        .with_stderr_contains("[COMPILING] foo [..]")
+        .with_stderr_contains("[COMPILING] bar v0.5.0 ([CWD]/bar)")
+        .with_stderr_contains("[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]")
         .run();
 
     let build_script_output = build_script_output_string(&p, "foo");
@@ -242,7 +226,7 @@ fn build_script_with_bin_artifacts() {
         )
         .unwrap();
     }
-    #[cfg(windows)]
+    #[cfg(all(windows, not(target_env = "gnu")))]
     {
         cargo_test_support::compare::match_exact(
             &format!(
@@ -401,7 +385,7 @@ fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
                 println!("{}", dir.display());
                 println!("{}", bin.display());
                 assert!(dir.is_dir());
-                assert!(bin.is_file());
+                assert!(&bin.is_file());
                 assert!(std::env::var("CARGO_BIN_FILE_BAR_BAZ").is_err(), "CARGO_BIN_FILE_BAR_BAZ isn't set due to name mismatch");
                 assert!(std::env::var("CARGO_BIN_FILE_BAR_BAZ_bar").is_err(), "CARGO_BIN_FILE_BAR_BAZ_bar isn't set as binary isn't selected");
             }
@@ -432,7 +416,7 @@ fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
         )
         .unwrap();
     }
-    #[cfg(windows)]
+    #[cfg(all(windows, not(target_env = "gnu")))]
     {
         cargo_test_support::compare::match_exact(
             &format!(
@@ -457,7 +441,6 @@ fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
 
 // TODO(ST): impl this, and add static and cdylib artifacts, too.
 #[cargo_test]
-#[ignore]
 fn lib_with_selected_dashed_bin_artifact_and_lib_true() {
     let p = project()
         .file(
@@ -538,16 +521,13 @@ fn allow_artifact_and_no_artifact_dep_to_same_package_within_different_dep_categ
         )
         .file("src/lib.rs", "")
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
-        .file("bar/src/main.rs", "")
+        .file("bar/src/main.rs", "fn main() {}")
         .build();
     p.cargo("check -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
-        .with_stderr(
-            "\
-[CHECKING] foo [..]
-[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
-",
-        )
+        .with_stderr_contains("[CHECKING] foo [..]")
+        .with_stderr_contains("[CHECKING] bar v0.5.0 ([CWD]/bar)")
+        .with_stderr_contains("[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]")
         .run();
 }
 
@@ -740,16 +720,13 @@ fn prevent_no_lib_warning_with_artifact_dependencies() {
         )
         .file("src/lib.rs", "")
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
-        .file("bar/src/main.rs", "")
+        .file("bar/src/main.rs", "fn main() {}")
         .build();
     p.cargo("check -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
-        .with_stderr(
-            "\
-[CHECKING] foo [..]
-[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
-",
-        )
+        .with_stderr_contains("[CHECKING] bar v0.5.0 ([CWD]/bar)")
+        .with_stderr_contains("[CHECKING] foo v0.0.0 ([CWD])")
+        .with_stderr_contains("[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]")
         .run();
 }
 
@@ -770,17 +747,14 @@ fn show_no_lib_warning_with_artifact_dependencies_that_have_no_lib_but_lib_true(
         )
         .file("src/lib.rs", "")
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
-        .file("bar/src/main.rs", "")
+        .file("bar/src/main.rs", "fn main() {}")
         .build();
     p.cargo("check -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
-        .with_stderr(
-            "\
-[WARNING] foo v0.0.0 ([CWD]) ignoring invalid dependency `bar` which is missing a lib target
-[CHECKING] foo [..]
-[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
-",
-        )
+        .with_stderr_contains("[WARNING] foo v0.0.0 ([CWD]) ignoring invalid dependency `bar` which is missing a lib target")
+        .with_stderr_contains("[CHECKING] bar v0.5.0 ([CWD]/bar)")
+        .with_stderr_contains("[CHECKING] foo [..]")
+        .with_stderr_contains("[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]")
         .run();
 }
 
@@ -1123,7 +1097,7 @@ fn assert_artifact_executable_output(
             "artifacts are placed into their own output directory to not possibly clash"
         );
     }
-    #[cfg(windows)]
+    #[cfg(all(windows, not(target_env = "gnu")))]
     {
         assert_eq!(
             p.glob(format!(

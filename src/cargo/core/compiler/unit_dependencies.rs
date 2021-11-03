@@ -263,14 +263,6 @@ fn compute_deps(
             return false;
         }
 
-        // Artifact dependencies are only counted as standard libraries if they are marked
-        // as 'library as well'
-        if let Some(artifact) = dep.artifact() {
-            if !artifact.is_lib() {
-                return false;
-            }
-        }
-
         // If we've gotten past all that, then this dependency is
         // actually used!
         true
@@ -280,7 +272,48 @@ fn compute_deps(
     let mut dev_deps = Vec::new();
     for (id, deps) in filtered_deps {
         let pkg = state.get(id);
-        let lib = match pkg.targets().iter().find(|t| t.is_lib()) {
+        // Artifact dependencies are only counted as standard libraries if they are marked
+        // as 'library as well'. We don't filter in the closure above as we still want to get a chance
+        // to process them as pure non-lib artifact dependencies.
+        let mut has_artifact = false;
+        let mut artifact_lib = false;
+        // Custom build scripts (build/compile) never get artifact dependencies, but the run-build-script step does.
+        let artifact_pkg = state.get(id);
+        for (dep, artifact) in deps
+            .iter()
+            .filter_map(|dep| dep.artifact().map(|a| (dep, a)))
+        {
+            has_artifact = true;
+            artifact_lib |= artifact.is_lib();
+            if !unit.target.is_custom_build() && !unit.mode.is_run_custom_build() {
+                ret.extend(
+                    match_artifacts_kind_with_targets(unit, dep, artifact_pkg.targets())?
+                        .into_iter()
+                        .map(|target| {
+                            new_unit_dep(
+                                state,
+                                unit,
+                                artifact_pkg,
+                                target,
+                                unit_for,  // TODO(ST): definitely check what's best here.
+                                unit.kind, // TODO(ST): handle target="target", and other cases
+                                check_or_build_mode(unit.mode, target),
+                                /*artifact*/ true,
+                            )
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
+                );
+            }
+        }
+
+        let lib = pkg.targets().iter().find(|t| {
+            if has_artifact {
+                t.is_lib() && artifact_lib
+            } else {
+                t.is_lib()
+            }
+        });
+        let lib = match lib {
             Some(t) => t,
             None => continue,
         };
@@ -451,7 +484,7 @@ fn compute_deps_custom_build(
     if artifact_build_deps.is_empty() {
         Ok(vec![compile_script_unit])
     } else {
-        let mut artifact_units: Vec<_> = artifact_requirements_to_units(
+        let mut artifact_units: Vec<_> = build_artifact_requirements_to_units(
             unit,
             script_unit_for,
             artifact_build_deps,
@@ -463,18 +496,18 @@ fn compute_deps_custom_build(
     }
 }
 
-fn artifact_requirements_to_units(
+fn build_artifact_requirements_to_units(
     parent: &Unit,
     parent_unit_for: UnitFor,
     artifact_deps: Vec<(PackageId, &HashSet<Dependency>)>,
     state: &State<'_, '_>,
     kind: CompileKind,
 ) -> CargoResult<Vec<UnitDep>> {
-    let mut out = Vec::new();
+    let mut ret = Vec::new();
     for (dep_pkg_id, deps) in artifact_deps {
+        let artifact_pkg = state.get(dep_pkg_id);
         for build_dep in deps.iter().filter(|d| d.is_build()) {
-            let artifact_pkg = state.get(dep_pkg_id);
-            out.extend(
+            ret.extend(
                 match_artifacts_kind_with_targets(parent, build_dep, artifact_pkg.targets())?
                     .into_iter()
                     .map(|target| {
@@ -494,7 +527,7 @@ fn artifact_requirements_to_units(
             );
         }
     }
-    Ok(out)
+    Ok(ret)
 }
 
 fn match_artifacts_kind_with_targets<'a>(
