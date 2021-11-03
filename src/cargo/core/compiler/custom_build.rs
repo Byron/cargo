@@ -1,9 +1,9 @@
 use super::job::{Freshness, Job, Work};
 use super::{fingerprint, Context, LinkType, Unit};
+use crate::core::compiler::artifact;
 use crate::core::compiler::context::Metadata;
 use crate::core::compiler::job_queue::JobState;
-use crate::core::compiler::{CrateType, FileFlavor};
-use crate::core::{profiles::ProfileRoot, PackageId, Target, TargetKind};
+use crate::core::{profiles::ProfileRoot, PackageId, Target};
 use crate::util::errors::CargoResult;
 use crate::util::machine_message::{self, Message};
 use crate::util::{internal, profile};
@@ -205,39 +205,7 @@ fn build_work(cx: &mut Context<'_, '_>, unit: &Unit) -> CargoResult<Job> {
         .inherit_jobserver(&cx.jobserver);
 
     // Find all artifact dependencies and make their file and containing directory discoverable using environment variables.
-    for unit_dep in dependencies.iter().filter(|d| d.unit.artifact) {
-        for artifact_path in cx
-            .outputs(&unit_dep.unit)?
-            .iter()
-            .filter_map(|f| (f.flavor == FileFlavor::Normal).then(|| &f.path))
-        {
-            let artifact_type_upper = unit_artifact_type_name_upper(&unit_dep.unit);
-            let dep_name_upper = unit_dep
-                .dep_name
-                .unwrap_or(unit_dep.unit.pkg.name())
-                .to_uppercase()
-                .replace("-", "_");
-            cmd.env(
-                &format!("CARGO_{}_DIR_{}", artifact_type_upper, dep_name_upper),
-                artifact_path.parent().expect("parent dir for artifacts"),
-            );
-            cmd.env(
-                &format!(
-                    "CARGO_{}_FILE_{}_{}",
-                    artifact_type_upper,
-                    dep_name_upper,
-                    unit_dep.unit.target.name()
-                ),
-                artifact_path,
-            );
-            if unit_dep.unit.target.name().to_uppercase() == dep_name_upper {
-                cmd.env(
-                    &format!("CARGO_{}_FILE_{}", artifact_type_upper, dep_name_upper,),
-                    artifact_path,
-                );
-            }
-        }
-    }
+    artifact::set_env(cx, dependencies, &mut cmd)?;
 
     if let Some(linker) = &bcx.target_data.target_config(unit.kind).linker {
         cmd.env(
@@ -516,18 +484,6 @@ fn build_work(cx: &mut Context<'_, '_>, unit: &Unit) -> CargoResult<Job> {
         job.before(fresh);
     }
     Ok(job)
-}
-
-fn unit_artifact_type_name_upper(unit: &Unit) -> &'static str {
-    match unit.target.kind() {
-        TargetKind::Lib(kinds) => match kinds.as_slice() {
-            &[CrateType::Cdylib] => "CDYLIB",
-            &[CrateType::Staticlib] => "STATICLIB",
-            invalid => unreachable!("BUG: artifacts cannot be of type {:?}", invalid),
-        },
-        TargetKind::Bin => "BIN",
-        invalid => unreachable!("BUG: artifacts cannot be of type {:?}", invalid),
-    }
 }
 
 fn insert_warnings_in_build_outputs(

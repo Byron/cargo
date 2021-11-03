@@ -1,3 +1,4 @@
+mod artifact;
 mod build_config;
 mod build_context;
 mod build_plan;
@@ -273,7 +274,7 @@ fn rustc(cx: &mut Context<'_, '_>, unit: &Unit, exec: &Arc<dyn Executor>) -> Car
         // previous build scripts, we include them in the rustc invocation.
 
         // Artifacts are in a different location than typical units, hence
-        // we must assure the crate-dependent directory is present.
+        // we must assure the crate- and target-dependent directory is present.
         if is_artifact {
             paths::create_dir_all(&root)?;
         }

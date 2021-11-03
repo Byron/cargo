@@ -156,6 +156,7 @@ fn warn_about_artifact_and_no_artifact_dep_to_same_package_within_the_same_dep_c
         .run();
 }
 
+// TODO(ST): add static and cdylib artifacts, too.
 #[cargo_test]
 fn build_script_with_bin_artifacts() {
     let p = project()
@@ -227,7 +228,7 @@ fn build_script_with_bin_artifacts() {
 
     let build_script_output = build_script_output_string(&p, "foo");
     let msg = "we need the binary directory for this artifact along with all binary paths";
-    #[cfg(not(windows))]
+    #[cfg(any(not(windows), target_env = "gnu"))]
     {
         cargo_test_support::compare::match_exact(
             "[..]/artifact/bar-[..]/bin/baz-[..]\n\
@@ -314,6 +315,49 @@ fn build_script_with_bin_artifact_and_lib_false() {
 }
 
 #[cargo_test]
+fn lib_with_bin_artifact_and_lib_false() {
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                
+                [dependencies]
+                bar = { path = "bar/", artifact = "bin" }
+            "#,
+        )
+        .file(
+            "src/lib.rs",
+            r#"
+            fn main() {
+               bar::doit()
+            }"#,
+        )
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file("bar/src/main.rs", "fn main() { bar::doit(); }")
+        .file(
+            "bar/src/lib.rs",
+            r#"
+            pub fn doit() {
+               panic!("cannot be called from library due to lib = false");
+            }
+        "#,
+        )
+        .build();
+    p.cargo("build -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_status(101)
+        .with_stderr_contains(
+            "error[E0433]: failed to resolve: use of undeclared crate or module `bar`",
+        )
+        .with_stderr_contains(" --> src/lib.rs:3:16")
+        .run();
+}
+
+#[cargo_test]
 fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
     let p = project()
         .file(
@@ -376,7 +420,7 @@ fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
     let build_script_output = build_script_output_string(&p, "foo");
     let msg = "we need the binary directory for this artifact and the binary itself";
 
-    #[cfg(not(windows))]
+    #[cfg(any(not(windows), target_env = "gnu"))]
     {
         cargo_test_support::compare::match_exact(
             "[..]/artifact/bar-baz-[..]/bin\n\
@@ -403,6 +447,68 @@ fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
         )
         .unwrap();
     }
+
+    assert!(
+        !p.bin("bar").is_file(),
+        "artifacts are located in their own directory, exclusively, and won't be lifted up"
+    );
+    assert_artifact_executable_output(&p, "debug", "bar", "baz_suffix");
+}
+
+// TODO(ST): impl this, and add static and cdylib artifacts, too.
+#[cargo_test]
+fn lib_with_selected_dashed_bin_artifact_and_lib_true() {
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                
+                [dependencies]
+                bar-baz = { path = "bar/", artifact = "bin:baz-suffix", lib = true }
+            "#,
+        )
+        .file(
+            "src/lib.rs",
+            r#"
+            pub fn foo() {
+                bar_baz::exists();
+                
+                env!("CARGO_BIN_DIR_BAR_BAZ");
+                let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR_BAZ_baz-suffix"));
+            }
+        "#,
+        )
+        .file(
+            "bar/Cargo.toml",
+            r#"
+                [package]
+                name = "bar-baz"
+                version = "0.5.0"
+                authors = []
+                
+                [[bin]]
+                name = "bar"
+                
+                [[bin]]
+                name = "baz-suffix"
+            "#,
+        )
+        .file("bar/src/main.rs", "fn main() {}")
+        .file("bar/src/lib.rs", "pub fn exists() {}")
+        .build();
+    p.cargo("build -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_stderr(
+            "\
+[COMPILING] bar-baz v0.5.0 ([CWD]/bar)
+[COMPILING] foo [..]
+[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]",
+        )
+        .run();
 
     assert!(
         !p.bin("bar").is_file(),
@@ -999,7 +1105,7 @@ fn assert_artifact_executable_output(
     dep_name: &str,
     bin_name: &str,
 ) {
-    #[cfg(not(windows))]
+    #[cfg(any(not(windows), target_env = "gnu"))]
     {
         assert_eq!(
             p.glob(format!(
