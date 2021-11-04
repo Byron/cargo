@@ -1960,7 +1960,7 @@ impl<P: ResolveToPath> DetailedTomlDependency<P> {
                 dep.set_artifact(Artifact::parse(artifact, is_lib)?)
             } else {
                 let msg = format!(
-                    "'artifact = …' ignored for dependency ({}) as -Z bindeps is not set.",
+                    "`artifact = …` ignored for dependency `{}` as `-Z bindeps` is not set.",
                     name_in_toml
                 );
                 cx.warnings.push(msg);
@@ -1970,7 +1970,7 @@ impl<P: ResolveToPath> DetailedTomlDependency<P> {
                 bail!("'lib' specifier cannot be used without an 'artifact = …' value")
             } else {
                 cx.warnings.push(
-                    "'lib' specifiers need an 'artifact = …' value and would fail the operation when '-Z bindeps' is provided."
+                    "`lib` specifiers need an `artifact = …` value and would fail the operation when `-Z bindeps` is provided."
                         .into(),
                 )
             }

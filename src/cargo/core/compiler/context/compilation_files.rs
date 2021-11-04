@@ -303,7 +303,10 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
             TargetKind::Lib(lib_kinds) => match lib_kinds.as_slice() {
                 &[CrateType::Cdylib] => "cdylib",
                 &[CrateType::Staticlib] => "staticlib",
-                invalid => unreachable!("BUG: unexpected artifact library type(s): {:?}", invalid),
+                invalid => unreachable!(
+                    "BUG: unexpected artifact library type(s): {:?} - these should have been split",
+                    invalid
+                ),
             },
             invalid => unreachable!(
                 "BUG: {:?} are not supposed to be used as artifacts",

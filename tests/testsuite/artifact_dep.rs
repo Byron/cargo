@@ -88,7 +88,7 @@ fn build_without_nightly_shows_warnings_and_ignores_them() {
     p.cargo("check")
         .with_stderr(
             "\
-[WARNING] 'artifact = [..]' ignored for dependency (bar) as -Z bindeps is not set.
+[WARNING] `artifact = [..]` ignored for dependency `bar` as `-Z bindeps` is not set.
 [CHECKING] bar [..]
 [CHECKING] foo [..]
 [FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
@@ -114,10 +114,9 @@ fn build_without_nightly_shows_warnings_and_ignores_them() {
         .file("bar/src/lib.rs", "")
         .build();
     p.cargo("check")
-        // TODO(ST): use backticks instead of single quotes for quotation for consistency.
         .with_stderr(
             "\
-[WARNING] 'lib' specifiers need an 'artifact = …' value and would fail the operation when '-Z bindeps' is provided.
+[WARNING] `lib` specifiers need an `artifact = …` value and would fail the operation when `-Z bindeps` is provided.
 [CHECKING] bar [..]
 [CHECKING] foo [..]
 [FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
@@ -168,7 +167,7 @@ fn build_script_with_bin_artifacts() {
                 authors = []
                 
                 [build-dependencies]
-                bar = { path = "bar/", artifact = "bin" }
+                bar = { path = "bar/", artifact = ["bin", "staticlib"] }
             "#,
         )
         .file("src/lib.rs", "")
@@ -177,6 +176,14 @@ fn build_script_with_bin_artifacts() {
                 let baz: std::path::PathBuf = std::env::var("CARGO_BIN_FILE_BAR_baz").expect("CARGO_BIN_FILE_BAR_baz").into();
                 println!("{}", baz.display());
                 assert!(&baz.is_file()); 
+                
+                let lib: std::path::PathBuf = std::env::var("CARGO_STATICLIB_FILE_BAR_bar").expect("CARGO_STATICLIB_FILE_BAR_bar").into();
+                println!("{}", lib.display());
+                assert!(&lib.is_file()); 
+                
+                // let lib: std::path::PathBuf = std::env::var("CARGO_CDYLIB_FILE_BAR_bar").expect("CARGO_CDYLIB_FILE_BAR_bar").into();
+                // println!("{}", lib.display());
+                // assert!(&lib.is_file()); 
                 
                 let dir: std::path::PathBuf = std::env::var("CARGO_BIN_DIR_BAR").expect("CARGO_BIN_DIR_BAR").into();
                 println!("{}", dir.display());
@@ -198,10 +205,14 @@ fn build_script_with_bin_artifacts() {
                 name = "bar"
                 version = "0.5.0"
                 authors = []
+                
+                [lib]
+                crate-type = ["staticlib"]
             "#,
         )
         .file("bar/src/bin/bar.rs", "fn main() {}")
         .file("bar/src/bin/baz.rs", "fn main() {}")
+        .file("bar/src/lib.rs", "")
         .build();
     p.cargo("build -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
@@ -216,6 +227,7 @@ fn build_script_with_bin_artifacts() {
     {
         cargo_test_support::compare::match_exact(
             "[..]/artifact/bar-[..]/bin/baz-[..]\n\
+             [..]/artifact/bar-[..]/staticlib/libbar-[..].a\n\
              [..]/artifact/bar-[..]/bin\n\
              [..]/artifact/bar-[..]/bin/bar-[..]\n\
              [..]/artifact/bar-[..]/bin/bar-[..]",
@@ -229,15 +241,11 @@ fn build_script_with_bin_artifacts() {
     #[cfg(all(windows, not(target_env = "gnu")))]
     {
         cargo_test_support::compare::match_exact(
-            &format!(
-                "[..]/artifact/bar-[..]/bin/baz{}\n\
-                 [..]/artifact/bar-[..]/bin\n\
-                 [..]/artifact/bar-[..]/bin/bar{}\n\
-                 [..]/artifact/bar-[..]/bin/bar{}",
-                std::env::consts::EXE_SUFFIX,
-                std::env::consts::EXE_SUFFIX,
-                std::env::consts::EXE_SUFFIX
-            ),
+            "[..]/artifact/bar-[..]/bin/baz.exe\n\
+             [..]/artifact/bar-[..]/staticlib/bar.lib\n\
+             [..]/artifact/bar-[..]/bin\n\
+             [..]/artifact/bar-[..]/bin/bar.exe\n\
+             [..]/artifact/bar-[..]/bin/bar.exe",
             &build_script_output,
             msg,
             "",
