@@ -22,7 +22,7 @@ use crate::core::dependency::{ArtifactKind, DepKind};
 use crate::core::profiles::{Profile, Profiles, UnitFor};
 use crate::core::resolver::features::{FeaturesFor, ResolvedFeatures};
 use crate::core::resolver::Resolve;
-use crate::core::{Dependency, Package, PackageId, PackageSet, Target, Workspace};
+use crate::core::{Dependency, Package, PackageId, PackageSet, Target, TargetKind, Workspace};
 use crate::ops::resolve_all_features;
 use crate::util::interning::InternedString;
 use crate::util::Config;
@@ -523,7 +523,7 @@ fn build_artifact_requirements_to_units(
     parent_unit_for: UnitFor,
     artifact_deps: Vec<(PackageId, &HashSet<Dependency>)>,
     state: &State<'_, '_>,
-    kind: CompileKind,
+    compile_kind: CompileKind,
 ) -> CargoResult<Vec<UnitDep>> {
     let mut ret = Vec::new();
     for (dep_pkg_id, deps) in artifact_deps {
@@ -532,18 +532,41 @@ fn build_artifact_requirements_to_units(
             ret.extend(
                 match_artifacts_kind_with_targets(parent, build_dep, artifact_pkg.targets())?
                     .into_iter()
-                    .map(|target| {
+                    .flat_map(|target| {
                         // TODO(ST): handle target="target", there isn't even a test for that yet
-                        new_unit_dep(
-                            state,
-                            parent,
-                            artifact_pkg,
-                            target,
-                            parent_unit_for,
-                            kind,
-                            CompileMode::Build,
-                            /*artifact*/ true,
-                        )
+                        // We split target libraries into individual units, even though rustc is able to produce multiple
+                        // kinds in an single invocation for the sole reason that each artifact kind has its own output directoy,
+                        // something we can't easily teach rustc for now.
+                        match target.kind() {
+                            TargetKind::Lib(kinds) => {
+                                Box::new(kinds.iter().map(|target_kind| {
+                                    new_unit_dep(
+                                        state,
+                                        parent,
+                                        artifact_pkg,
+                                        target
+                                            .clone()
+                                            .set_kind(TargetKind::Lib(vec![target_kind.clone()])),
+                                        parent_unit_for,
+                                        compile_kind,
+                                        CompileMode::Build,
+                                        /*artifact*/ true,
+                                    )
+                                })) as Box<dyn Iterator<Item = _>>
+                            }
+                            _ => {
+                                Box::new(std::iter::once(new_unit_dep(
+                                    state,
+                                    parent,
+                                    artifact_pkg,
+                                    target,
+                                    parent_unit_for,
+                                    compile_kind,
+                                    CompileMode::Build,
+                                    /*artifact*/ true,
+                                )))
+                            }
+                        }
                     })
                     .collect::<Result<Vec<_>, _>>()?,
             );
@@ -560,18 +583,21 @@ fn match_artifacts_kind_with_targets<'a>(
     let mut out = HashSet::new();
     let artifact_requirements = artifact_dep.artifact().expect("artifact present");
     for artifact_kind in artifact_requirements.kinds() {
-        let start = out.len();
-        match artifact_kind {
-            ArtifactKind::Cdylib => out.extend(targets.iter().filter(|t| t.is_cdylib())),
-            ArtifactKind::Staticlib => out.extend(targets.iter().filter(|t| t.is_staticlib())),
-            ArtifactKind::AllBinaries => out.extend(targets.iter().filter(|t| t.is_bin())),
-            ArtifactKind::SelectedBinary(bin_name) => out.extend(
-                targets
-                    .iter()
-                    .filter(|t| t.is_bin() && t.name() == bin_name.as_str()),
-            ),
+        let mut extend = |filter: &dyn Fn(&&Target) -> bool| {
+            let mut iter = targets.iter().filter(filter).peekable();
+            let found = iter.peek().is_some();
+            out.extend(iter);
+            found
         };
-        if out.len() == start {
+        let found = match artifact_kind {
+            ArtifactKind::Cdylib => extend(&|t| t.is_cdylib()),
+            ArtifactKind::Staticlib => extend(&|t| t.is_staticlib()),
+            ArtifactKind::AllBinaries => extend(&|t| t.is_bin()),
+            ArtifactKind::SelectedBinary(bin_name) => {
+                extend(&|t| t.is_bin() && t.name() == bin_name.as_str())
+            }
+        };
+        if !found {
             anyhow::bail!(
                 "Dependency '{}' in crate '{}' requires a {} artifact to be present.",
                 artifact_dep.name_in_toml(),

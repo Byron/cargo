@@ -154,7 +154,6 @@ fn disallow_artifact_and_no_artifact_dep_to_same_package_within_the_same_dep_cat
         .run();
 }
 
-// TODO(ST): add static and cdylib artifacts, too.
 #[cargo_test]
 fn build_script_with_bin_artifacts() {
     let p = project()
@@ -167,7 +166,7 @@ fn build_script_with_bin_artifacts() {
                 authors = []
                 
                 [build-dependencies]
-                bar = { path = "bar/", artifact = ["bin", "staticlib"] }
+                bar = { path = "bar/", artifact = ["bin", "staticlib", "cdylib"] }
             "#,
         )
         .file("src/lib.rs", "")
@@ -181,9 +180,9 @@ fn build_script_with_bin_artifacts() {
                 println!("{}", lib.display());
                 assert!(&lib.is_file()); 
                 
-                // let lib: std::path::PathBuf = std::env::var("CARGO_CDYLIB_FILE_BAR_bar").expect("CARGO_CDYLIB_FILE_BAR_bar").into();
-                // println!("{}", lib.display());
-                // assert!(&lib.is_file()); 
+                let lib: std::path::PathBuf = std::env::var("CARGO_CDYLIB_FILE_BAR_bar").expect("CARGO_CDYLIB_FILE_BAR_bar").into();
+                println!("{}", lib.display());
+                assert!(&lib.is_file()); 
                 
                 let dir: std::path::PathBuf = std::env::var("CARGO_BIN_DIR_BAR").expect("CARGO_BIN_DIR_BAR").into();
                 println!("{}", dir.display());
@@ -207,7 +206,7 @@ fn build_script_with_bin_artifacts() {
                 authors = []
                 
                 [lib]
-                crate-type = ["staticlib"]
+                crate-type = ["staticlib", "cdylib"]
             "#,
         )
         .file("bar/src/bin/bar.rs", "fn main() {}")
@@ -228,6 +227,7 @@ fn build_script_with_bin_artifacts() {
         cargo_test_support::compare::match_exact(
             "[..]/artifact/bar-[..]/bin/baz-[..]\n\
              [..]/artifact/bar-[..]/staticlib/libbar-[..].a\n\
+             [..]/artifact/bar-[..]/cdylib/[..]bar.[..]\n\
              [..]/artifact/bar-[..]/bin\n\
              [..]/artifact/bar-[..]/bin/bar-[..]\n\
              [..]/artifact/bar-[..]/bin/bar-[..]",
@@ -242,7 +242,8 @@ fn build_script_with_bin_artifacts() {
     {
         cargo_test_support::compare::match_exact(
             "[..]/artifact/bar-[..]/bin/baz.exe\n\
-             [..]/artifact/bar-[..]/staticlib/bar.lib\n\
+             [..]/artifact/bar-[..]/staticlib/bar-[..].lib\n\
+             [..]/artifact/bar-[..]/cdylib/bar.dll\n\
              [..]/artifact/bar-[..]/bin\n\
              [..]/artifact/bar-[..]/bin/bar.exe\n\
              [..]/artifact/bar-[..]/bin/bar.exe",
