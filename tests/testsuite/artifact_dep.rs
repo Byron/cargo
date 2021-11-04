@@ -519,14 +519,21 @@ fn allow_artifact_and_no_artifact_dep_to_same_package_within_different_dep_categ
                 bar = { path = "bar/", package = "bar" }
             "#,
         )
-        .file("src/lib.rs", "")
+        .file(
+            "src/lib.rs",
+            r#"
+            pub fn foo() {
+                env!("CARGO_BIN_DIR_BAR");
+                let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR"));
+            }"#,
+        )
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
         .file("bar/src/main.rs", "fn main() {}")
         .build();
     p.cargo("check -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
+        .with_stderr_contains("[COMPILING] bar v0.5.0 ([CWD]/bar)")
         .with_stderr_contains("[CHECKING] foo [..]")
-        .with_stderr_contains("[CHECKING] bar v0.5.0 ([CWD]/bar)")
         .with_stderr_contains("[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]")
         .run();
 }
@@ -534,11 +541,6 @@ fn allow_artifact_and_no_artifact_dep_to_same_package_within_different_dep_categ
 #[cargo_test]
 #[ignore]
 fn disallow_using_example_binaries_as_artifacts() {}
-
-// I think compiles it, so 'env!()' must work and be set, along with built artifacts.
-#[cargo_test]
-#[ignore]
-fn rustdoc_works_on_libs_with_artifacts() {}
 
 #[cargo_test]
 #[ignore]
@@ -724,7 +726,7 @@ fn prevent_no_lib_warning_with_artifact_dependencies() {
         .build();
     p.cargo("check -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
-        .with_stderr_contains("[CHECKING] bar v0.5.0 ([CWD]/bar)")
+        .with_stderr_contains("[COMPILING] bar v0.5.0 ([CWD]/bar)")
         .with_stderr_contains("[CHECKING] foo v0.0.0 ([CWD])")
         .with_stderr_contains("[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]")
         .run();
@@ -752,7 +754,7 @@ fn show_no_lib_warning_with_artifact_dependencies_that_have_no_lib_but_lib_true(
     p.cargo("check -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr_contains("[WARNING] foo v0.0.0 ([CWD]) ignoring invalid dependency `bar` which is missing a lib target")
-        .with_stderr_contains("[CHECKING] bar v0.5.0 ([CWD]/bar)")
+        .with_stderr_contains("[COMPILING] bar v0.5.0 ([CWD]/bar)")
         .with_stderr_contains("[CHECKING] foo [..]")
         .with_stderr_contains("[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]")
         .run();
@@ -1001,8 +1003,8 @@ fn doc_lib_true() {
         .masquerade_as_nightly_cargo()
         .with_stderr(
             "\
-[..] bar v0.0.1 ([CWD]/bar)
-[..] bar v0.0.1 ([CWD]/bar)
+[COMPILING] bar v0.0.1 ([CWD]/bar)
+[DOCUMENTING] bar v0.0.1 ([CWD]/bar)
 [DOCUMENTING] foo v0.0.1 ([CWD])
 [FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
 ",
@@ -1013,9 +1015,9 @@ fn doc_lib_true() {
     assert!(p.root().join("target/doc/foo/index.html").is_file());
     assert!(p.root().join("target/doc/bar/index.html").is_file());
 
-    // Verify that it only emits rmeta for the dependency.
-    assert_eq!(p.glob("target/debug/**/*.rlib").count(), 0);
-    assert_eq!(p.glob("target/debug/deps/libbar-*.rmeta").count(), 1);
+    // Verify that it emits rmeta for the bin and lib dependency.
+    assert_eq!(p.glob("target/debug/artifact/*.rlib").count(), 0);
+    assert_eq!(p.glob("target/debug/deps/libbar-*.rmeta").count(), 2);
 
     p.cargo("doc")
         .env("CARGO_LOG", "cargo::ops::cargo_rustc::fingerprint")
@@ -1028,8 +1030,7 @@ fn doc_lib_true() {
 }
 
 #[cargo_test]
-#[ignore] // TODO: assure this doesn't fail
-fn no_doc_for_non_lib_even_though_present() {
+fn rustdoc_works_on_libs_with_artifacts_and_lib_false() {
     let p = project()
         .file(
             "Cargo.toml",
@@ -1044,8 +1045,15 @@ fn no_doc_for_non_lib_even_though_present() {
                 artifact = "bin"
             "#,
         )
-        .file("src/lib.rs", "extern crate bar; pub fn foo() {}")
-        .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
+        .file(
+            "src/lib.rs",
+            r#"
+            pub fn foo() {
+                env!("CARGO_BIN_DIR_BAR");
+                let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR"));
+            }"#,
+        )
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
         .file("bar/src/lib.rs", "pub fn bar() {}")
         .file("bar/src/main.rs", "fn main() {}")
         .build();
@@ -1054,7 +1062,7 @@ fn no_doc_for_non_lib_even_though_present() {
         .masquerade_as_nightly_cargo()
         .with_stderr(
             "\
-[CHECKING] bar v0.0.1 ([CWD]/bar)
+[COMPILING] bar v0.5.0 ([CWD]/bar)
 [DOCUMENTING] foo v0.0.1 ([CWD])
 [FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
 ",
@@ -1063,20 +1071,14 @@ fn no_doc_for_non_lib_even_though_present() {
 
     assert!(p.root().join("target/doc").is_dir());
     assert!(p.root().join("target/doc/foo/index.html").is_file());
-    assert!(p.root().join("target/doc/bar/index.html").is_file());
+    assert!(
+        !p.root().join("target/doc/bar/index.html").is_file(),
+        "bar is not a lib dependency and thus remains undocumented"
+    );
 
-    // Verify that it only emits rmeta for the dependency.
-    assert_eq!(p.glob("target/debug/**/*.rlib").count(), 0);
+    // Verify that it only emits rmeta for the bin dependency.
+    assert_eq!(p.glob("target/debug/artifact/*.rlib").count(), 0);
     assert_eq!(p.glob("target/debug/deps/libbar-*.rmeta").count(), 1);
-
-    p.cargo("doc")
-        .env("CARGO_LOG", "cargo::ops::cargo_rustc::fingerprint")
-        .with_stdout("")
-        .run();
-
-    assert!(p.root().join("target/doc").is_dir());
-    assert!(p.root().join("target/doc/foo/index.html").is_file());
-    assert!(p.root().join("target/doc/bar/index.html").is_file());
 }
 
 fn assert_artifact_executable_output(

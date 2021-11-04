@@ -138,6 +138,7 @@ impl fmt::Debug for Unit {
             .field("kind", &self.kind)
             .field("mode", &self.mode)
             .field("features", &self.features)
+            .field("artifact", &self.artifact)
             .field("is_std", &self.is_std)
             .field("dep_hash", &self.dep_hash)
             .finish()
