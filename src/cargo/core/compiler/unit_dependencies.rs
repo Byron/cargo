@@ -16,8 +16,8 @@
 //! graph of `Unit`s, which capture these properties.
 
 use crate::core::compiler::unit_graph::{UnitDep, UnitGraph};
-use crate::core::compiler::UnitInterner;
 use crate::core::compiler::{CompileKind, CompileMode, RustcTargetData, Unit};
+use crate::core::compiler::{CrateType, UnitInterner};
 use crate::core::dependency::{ArtifactKind, DepKind};
 use crate::core::profiles::{Profile, Profiles, UnitFor};
 use crate::core::resolver::features::{FeaturesFor, ResolvedFeatures};
@@ -433,23 +433,14 @@ fn calc_artifact_deps(
                 !unit.mode.is_run_custom_build(),
                 "BUG: This should be handled in a separate branch"
             );
-            ret.extend(
-                match_artifacts_kind_with_targets(unit, dep, artifact_pkg.targets())?
-                    .into_iter()
-                    .map(|target| {
-                        new_unit_dep(
-                            state,
-                            unit,
-                            artifact_pkg,
-                            target,
-                            unit_for,  // TODO(ST): definitely check what's best here.
-                            unit.kind, // TODO(ST): handle target="target", and other cases
-                            CompileMode::Build,
-                            /*artifact*/ true,
-                        )
-                    })
-                    .collect::<Result<Vec<_>, _>>()?,
-            );
+            ret.extend(artifact_targets_to_unit_deps(
+                unit,
+                unit_for,
+                state,
+                unit.kind,
+                artifact_pkg,
+                dep,
+            )?);
         }
     }
     Ok((has_artifact, artifact_lib))
@@ -529,49 +520,71 @@ fn build_artifact_requirements_to_units(
     for (dep_pkg_id, deps) in artifact_deps {
         let artifact_pkg = state.get(dep_pkg_id);
         for build_dep in deps.iter().filter(|d| d.is_build()) {
-            ret.extend(
-                match_artifacts_kind_with_targets(parent, build_dep, artifact_pkg.targets())?
-                    .into_iter()
-                    .flat_map(|target| {
-                        // TODO(ST): handle target="target", there isn't even a test for that yet
-                        // We split target libraries into individual units, even though rustc is able to produce multiple
-                        // kinds in an single invocation for the sole reason that each artifact kind has its own output directoy,
-                        // something we can't easily teach rustc for now.
-                        match target.kind() {
-                            TargetKind::Lib(kinds) => {
-                                Box::new(kinds.iter().map(|target_kind| {
-                                    new_unit_dep(
-                                        state,
-                                        parent,
-                                        artifact_pkg,
-                                        target
-                                            .clone()
-                                            .set_kind(TargetKind::Lib(vec![target_kind.clone()])),
-                                        parent_unit_for,
-                                        compile_kind,
-                                        CompileMode::Build,
-                                        /*artifact*/ true,
-                                    )
-                                })) as Box<dyn Iterator<Item = _>>
-                            }
-                            _ => {
-                                Box::new(std::iter::once(new_unit_dep(
+            ret.extend(artifact_targets_to_unit_deps(
+                parent,
+                parent_unit_for,
+                state,
+                compile_kind,
+                artifact_pkg,
+                build_dep,
+            )?);
+        }
+    }
+    Ok(ret)
+}
+
+fn artifact_targets_to_unit_deps(
+    parent: &Unit,
+    parent_unit_for: UnitFor,
+    state: &State<'_, '_>,
+    compile_kind: CompileKind,
+    artifact_pkg: &Package,
+    dep: &Dependency,
+) -> CargoResult<Vec<UnitDep>> {
+    let ret = match_artifacts_kind_with_targets(parent, dep, artifact_pkg.targets())?
+        .into_iter()
+        .flat_map(|target| {
+            // TODO(ST): handle target="target", there isn't even a test for that yet
+            // We split target libraries into individual units, even though rustc is able to produce multiple
+            // kinds in an single invocation for the sole reason that each artifact kind has its own output directoy,
+            // something we can't easily teach rustc for now.
+            match target.kind() {
+                TargetKind::Lib(kinds) => {
+                    Box::new(
+                        kinds
+                            .iter()
+                            .filter(|tk| matches!(tk, CrateType::Cdylib | CrateType::Staticlib))
+                            .map(|target_kind| {
+                                new_unit_dep(
                                     state,
                                     parent,
                                     artifact_pkg,
-                                    target,
+                                    target
+                                        .clone()
+                                        .set_kind(TargetKind::Lib(vec![target_kind.clone()])),
                                     parent_unit_for,
                                     compile_kind,
                                     CompileMode::Build,
                                     /*artifact*/ true,
-                                )))
-                            }
-                        }
-                    })
-                    .collect::<Result<Vec<_>, _>>()?,
-            );
-        }
-    }
+                                )
+                            }),
+                    ) as Box<dyn Iterator<Item = _>>
+                }
+                _ => {
+                    Box::new(std::iter::once(new_unit_dep(
+                        state,
+                        parent,
+                        artifact_pkg,
+                        target,
+                        parent_unit_for,
+                        compile_kind,
+                        CompileMode::Build,
+                        /*artifact*/ true,
+                    )))
+                }
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(ret)
 }
 

@@ -461,7 +461,7 @@ fn lib_with_selected_dashed_bin_artifact_and_lib_true() {
                 authors = []
                 
                 [dependencies]
-                bar-baz = { path = "bar/", artifact = "bin:baz-suffix", lib = true }
+                bar-baz = { path = "bar/", artifact = ["bin:baz-suffix", "staticlib"], lib = true }
             "#,
         )
         .file(
@@ -472,6 +472,8 @@ fn lib_with_selected_dashed_bin_artifact_and_lib_true() {
                 
                 env!("CARGO_BIN_DIR_BAR_BAZ");
                 let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR_BAZ_baz-suffix"));
+                let _b = include_bytes!(env!("CARGO_STATICLIB_FILE_BAR_BAZ"));
+                let _b = include_bytes!(env!("CARGO_STATICLIB_FILE_BAR_BAZ_bar-baz"));
             }
         "#,
         )
@@ -482,6 +484,9 @@ fn lib_with_selected_dashed_bin_artifact_and_lib_true() {
                 name = "bar-baz"
                 version = "0.5.0"
                 authors = []
+                
+                [lib]
+                crate-type = ["rlib", "staticlib", "cdylib"]
                 
                 [[bin]]
                 name = "bar"
@@ -1039,6 +1044,7 @@ fn doc_lib_true() {
 }
 
 #[cargo_test]
+// TODO(ST): impl this, and add static and cdylib artifacts, too.
 fn rustdoc_works_on_libs_with_artifacts_and_lib_false() {
     let p = project()
         .file(

@@ -16,11 +16,8 @@ pub fn set_env(
             .filter_map(|f| (f.flavor == FileFlavor::Normal).then(|| &f.path))
         {
             let artifact_type_upper = unit_artifact_type_name_upper(&unit_dep.unit);
-            let dep_name_upper = unit_dep
-                .dep_name
-                .unwrap_or(unit_dep.unit.pkg.name())
-                .to_uppercase()
-                .replace("-", "_");
+            let dep_name = unit_dep.dep_name.unwrap_or(unit_dep.unit.pkg.name());
+            let dep_name_upper = dep_name.to_uppercase().replace("-", "_");
             cmd.env(
                 &format!("CARGO_{}_DIR_{}", artifact_type_upper, dep_name_upper),
                 artifact_path.parent().expect("parent dir for artifacts"),
@@ -34,7 +31,7 @@ pub fn set_env(
                 ),
                 artifact_path,
             );
-            if unit_dep.unit.target.name().to_uppercase() == dep_name_upper {
+            if unit_dep.unit.target.name() == dep_name.as_str() {
                 cmd.env(
                     &format!("CARGO_{}_FILE_{}", artifact_type_upper, dep_name_upper,),
                     artifact_path,
