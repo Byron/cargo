@@ -1118,7 +1118,7 @@ fn build_deps_args(
     {
         if let Some(dep) = deps
             .iter()
-            .find(|dep| !dep.unit.mode.is_doc() && dep.unit.target.is_lib())
+            .find(|dep| !dep.unit.mode.is_doc() && dep.unit.target.is_lib() && !dep.unit.artifact)
         {
             bcx.config.shell().warn(format!(
                 "The package `{}` \

@@ -259,6 +259,7 @@ fn build_script_with_bin_artifacts() {
         !p.bin("bar").is_file(),
         "artifacts are located in their own directory, exclusively, and won't be lifted up"
     );
+    assert!(!p.bin("baz").is_file(),);
     assert_artifact_executable_output(&p, "debug", "bar", "bar");
 }
 
@@ -448,7 +449,6 @@ fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
     assert_artifact_executable_output(&p, "debug", "bar", "baz_suffix");
 }
 
-// TODO(ST): impl this, and add static and cdylib artifacts, too.
 #[cargo_test]
 fn lib_with_selected_dashed_bin_artifact_and_lib_true() {
     let p = project()
@@ -461,7 +461,7 @@ fn lib_with_selected_dashed_bin_artifact_and_lib_true() {
                 authors = []
                 
                 [dependencies]
-                bar-baz = { path = "bar/", artifact = ["bin:baz-suffix", "staticlib"], lib = true }
+                bar-baz = { path = "bar/", artifact = ["bin:baz-suffix", "staticlib", "cdylib"], lib = true }
             "#,
         )
         .file(
@@ -474,6 +474,8 @@ fn lib_with_selected_dashed_bin_artifact_and_lib_true() {
                 let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR_BAZ_baz-suffix"));
                 let _b = include_bytes!(env!("CARGO_STATICLIB_FILE_BAR_BAZ"));
                 let _b = include_bytes!(env!("CARGO_STATICLIB_FILE_BAR_BAZ_bar-baz"));
+                let _b = include_bytes!(env!("CARGO_CDYLIB_FILE_BAR_BAZ"));
+                let _b = include_bytes!(env!("CARGO_CDYLIB_FILE_BAR_BAZ_bar-baz"));
             }
         "#,
         )
@@ -650,40 +652,7 @@ fn crate_renames_affect_the_artifact_dependency_name_and_multiple_names_are_allo
 }
 
 #[cargo_test]
-#[ignore]
-fn rust_libs_are_not_provided_by_default_in_libs() {
-    let p = project()
-        .file(
-            "Cargo.toml",
-            r#"
-                [package]
-                name = "foo"
-                version = "0.0.0"
-                authors = []
-                
-                [dependencies]
-                bar =         { path = "bar/", artifact = "bin" }
-            "#,
-        )
-        .file("src/lib.rs", "extern crate bar;")
-        .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
-        .file("bar/src/lib.rs", "")
-        .file("bar/src/main.rs", "")
-        .build();
-    p.cargo("check -Z unstable-options -Z bindeps")
-        .masquerade_as_nightly_cargo()
-        .with_status(101)
-        .with_stderr(
-            "\
-[CHECKING] bar [..]
-[CHECKING] foo [..]
-[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
-",
-        )
-        .run();
-}
-
-#[cargo_test]
+// TODO(ST): try to actually access the artifacts
 #[ignore]
 fn check_rust_libs_are_available_with_lib_true() {
     let p = project()
@@ -775,7 +744,6 @@ fn show_no_lib_warning_with_artifact_dependencies_that_have_no_lib_but_lib_true(
 }
 
 #[cargo_test]
-#[ignore]
 fn check_missing_crate_type_in_package_fails() {
     for crate_type in &["cdylib", "staticlib", "bin"] {
         let p = project()
@@ -802,11 +770,7 @@ fn check_missing_crate_type_in_package_fails() {
             .masquerade_as_nightly_cargo()
             .with_status(101)
             .with_stderr(
-                "\
-[CHECKING] bar [..]
-[CHECKING] foo [..]
-[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
-",
+                "[ERROR] Dependency `bar` in crate `foo` requires a `[..]` artifact to be present.",
             )
             .run();
     }
@@ -1044,7 +1008,6 @@ fn doc_lib_true() {
 }
 
 #[cargo_test]
-// TODO(ST): impl this, and add static and cdylib artifacts, too.
 fn rustdoc_works_on_libs_with_artifacts_and_lib_false() {
     let p = project()
         .file(
@@ -1057,7 +1020,7 @@ fn rustdoc_works_on_libs_with_artifacts_and_lib_false() {
 
                 [dependencies.bar]
                 path = "bar"
-                artifact = "bin"
+                artifact = ["bin", "staticlib", "cdylib"]
             "#,
         )
         .file(
@@ -1066,9 +1029,24 @@ fn rustdoc_works_on_libs_with_artifacts_and_lib_false() {
             pub fn foo() {
                 env!("CARGO_BIN_DIR_BAR");
                 let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR"));
+                let _b = include_bytes!(env!("CARGO_CDYLIB_FILE_BAR"));
+                let _b = include_bytes!(env!("CARGO_CDYLIB_FILE_BAR_bar"));
+                let _b = include_bytes!(env!("CARGO_STATICLIB_FILE_BAR"));
+                let _b = include_bytes!(env!("CARGO_STATICLIB_FILE_BAR_bar"));
             }"#,
         )
-        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file(
+            "bar/Cargo.toml",
+            r#"
+                [package]
+                name = "bar"
+                version = "0.5.0"
+                authors = []
+                
+                [lib]
+                crate-type = ["staticlib", "cdylib"]
+            "#,
+        )
         .file("bar/src/lib.rs", "pub fn bar() {}")
         .file("bar/src/main.rs", "fn main() {}")
         .build();
@@ -1090,10 +1068,6 @@ fn rustdoc_works_on_libs_with_artifacts_and_lib_false() {
         !p.root().join("target/doc/bar/index.html").is_file(),
         "bar is not a lib dependency and thus remains undocumented"
     );
-
-    // Verify that it only emits rmeta for the bin dependency.
-    assert_eq!(p.glob("target/debug/artifact/*.rlib").count(), 0);
-    assert_eq!(p.glob("target/debug/deps/libbar-*.rmeta").count(), 1);
 }
 
 fn assert_artifact_executable_output(

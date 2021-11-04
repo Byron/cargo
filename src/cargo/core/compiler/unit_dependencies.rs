@@ -612,7 +612,7 @@ fn match_artifacts_kind_with_targets<'a>(
         };
         if !found {
             anyhow::bail!(
-                "Dependency '{}' in crate '{}' requires a {} artifact to be present.",
+                "Dependency `{}` in crate `{}` requires a `{}` artifact to be present.",
                 artifact_dep.name_in_toml(),
                 unit.pkg.name(),
                 artifact_kind
