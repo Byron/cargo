@@ -703,15 +703,21 @@ fn prevent_no_lib_warning_with_artifact_dependencies() {
                 bar = { path = "bar/", artifact = "bin" }
             "#,
         )
-        .file("src/lib.rs", "")
+        .file(
+            "src/lib.rs",
+            r#"pub fn foo() { let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR")); }"#,
+        )
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
         .file("bar/src/main.rs", "fn main() {}")
         .build();
     p.cargo("check -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
-        .with_stderr_contains("[COMPILING] bar v0.5.0 ([CWD]/bar)")
-        .with_stderr_contains("[CHECKING] foo v0.0.0 ([CWD])")
-        .with_stderr_contains("[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]")
+        .with_stderr(
+            "\
+            [COMPILING] bar v0.5.0 ([CWD]/bar)\n\
+            [CHECKING] foo v0.0.0 ([CWD])\n\
+            [FINISHED] dev [unoptimized + debuginfo] target(s) in [..]",
+        )
         .run();
 }
 
