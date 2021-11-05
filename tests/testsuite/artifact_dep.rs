@@ -1,3 +1,4 @@
+use cargo_test_support::compare::match_exact;
 use cargo_test_support::registry::Package;
 use cargo_test_support::{basic_bin_manifest, basic_manifest, project, publish, registry, Project};
 
@@ -224,7 +225,7 @@ fn build_script_with_bin_artifacts() {
     let msg = "we need the binary directory for this artifact along with all binary paths";
     #[cfg(any(not(windows), target_env = "gnu"))]
     {
-        cargo_test_support::compare::match_exact(
+        match_exact(
             "[..]/artifact/bar-[..]/bin/baz-[..]\n\
              [..]/artifact/bar-[..]/staticlib/libbar-[..].a\n\
              [..]/artifact/bar-[..]/cdylib/[..]bar.[..]\n\
@@ -240,7 +241,7 @@ fn build_script_with_bin_artifacts() {
     }
     #[cfg(all(windows, not(target_env = "gnu")))]
     {
-        cargo_test_support::compare::match_exact(
+        match_exact(
             "[..]/artifact/bar-[..]/bin/baz.exe\n\
              [..]/artifact/bar-[..]/staticlib/bar-[..].lib\n\
              [..]/artifact/bar-[..]/cdylib/bar.dll\n\
@@ -560,8 +561,13 @@ fn disallow_using_example_binaries_as_artifacts() {}
 
 #[cargo_test]
 #[ignore]
-fn disallow_dep_renames_with_multiple_versions() {
-    Package::new("bar", "1.0.0").publish();
+fn allow_artifact_and_non_artifact_dependency_to_same_crate() {}
+
+#[cargo_test]
+fn allow_dep_renames_with_multiple_versions() {
+    Package::new("bar", "1.0.0")
+        .file("src/main.rs", r#"fn main() {println!("1.0.0")}"#)
+        .publish();
 
     let p = project()
         .file(
@@ -572,35 +578,42 @@ fn disallow_dep_renames_with_multiple_versions() {
                 version = "0.0.0"
                 authors = []
                 
-                [dependencies]
+                [build-dependencies]
                 bar = { path = "bar/", artifact = "bin" }
                 bar_stable = { package = "bar", version = "1.0.0", artifact = "bin" }
             "#,
         )
-        .file("src/lib.rs", "") // this would fail if artifacts are available as these aren't libs by default
-        .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
-        .file("bar/src/lib.rs", "")
+        .file("src/lib.rs", "")
+        .file(
+            "build.rs",
+            r#"
+            fn main() {
+                std::process::Command::new(std::env::var("CARGO_BIN_FILE_BAR").expect("BAR present")).status().unwrap();
+                std::process::Command::new(std::env::var("CARGO_BIN_FILE_BAR_STABLE_bar").expect("BAR STABLE present")).status().unwrap();
+            }
+            "#,
+        )
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file("bar/src/main.rs", r#"fn main() {println!("0.5.0")}"#)
         .build();
     p.cargo("check -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
-        .with_status(101)
-        .with_stderr(
-            "\
-[UPDATING] [..]
-[DOWNLOADING] crates ...
-[DOWNLOADED] bar v1.0.0 [..]
-[CHECKING] bar [..]
-[CHECKING] bar v1.0.0
-[CHECKING] foo [..]
-[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
-",
-        )
+        .with_stderr_contains("[COMPILING] bar [..]")
+        .with_stderr_contains("[COMPILING] foo [..]")
         .run();
+    let build_script_output = build_script_output_string(&p, "foo");
+    match_exact(
+        "0.5.0\n1.0.0",
+        &build_script_output,
+        "build script output",
+        "",
+        None,
+    )
+    .unwrap();
 }
 
 #[cargo_test]
-#[ignore]
-fn crate_renames_affect_the_artifact_dependency_name_and_multiple_names_are_allowed() {
+fn allow_artifact_and_non_artifact_dependency_to_same_crate_if_these_are_not_the_same_dep_kind() {
     let p = project()
         .file(
             "Cargo.toml",
@@ -610,34 +623,28 @@ fn crate_renames_affect_the_artifact_dependency_name_and_multiple_names_are_allo
                 version = "0.0.0"
                 authors = []
                 
+                [build-dependencies]
+                bar = { path = "bar/", artifact = "bin", lib = false }
+                
                 [dependencies]
-                bar_renamed = { path = "bar/", artifact = "bin", package = "bar" }
-                bar =         { path = "bar/", artifact = "bin" }
+                bar = { path = "bar/" }
             "#,
         )
         .file("src/lib.rs", r#"
-            fn foo() {
-                 let _v = (env!("CARGO_BIN_FILE_BAR_RENAMED"),
-                           env!("CARGO_BIN_FILE_BAR_RENAMED_bar"));
-                 let _v = (env!("CARGO_BIN_FILE_BAR"),
-                           env!("CARGO_BIN_FILE_BAR_bar"));
+            pub fn foo() {
+                bar::doit();
+                assert!(option_env!("CARGO_BIN_FILE_BAR").is_none());
             }"#)
         .file(
             "build.rs",
             r#"fn main() {
-               assert!(option_env!("CARGO_BIN_FILE_BAR_RENAMED").is_none());
-               assert!(option_env!("CARGO_BIN_FILE_BAR_RENAMED_bar").is_none());
-               println!("{}", std::env::var("CARGO_BIN_FILE_BAR_RENAMED").expect("CARGO_BIN_FILE_BAR_RENAMED"));
-               println!("{}", std::env::var("CARGO_BIN_FILE_BAR_RENAMED_bar").expect("CARGO_BIN_FILE_BAR_RENAMED_bar"));
-               
-               assert!(option_env!("CARGO_BIN_FILE_BAR").is_none());
-               assert!(option_env!("CARGO_BIN_FILE_BAR_bar").is_none());
                println!("{}", std::env::var("CARGO_BIN_FILE_BAR").expect("CARGO_BIN_FILE_BAR"));
                println!("{}", std::env::var("CARGO_BIN_FILE_BAR_bar").expect("CARGO_BIN_FILE_BAR_bar"));
            }"#,
         )
         .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
-        .file("bar/src/main.rs", "")
+        .file("bar/src/lib.rs", "pub fn doit() {}")
+        .file("bar/src/main.rs", "fn main() {}")
         .build();
     p.cargo("build -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
@@ -645,43 +652,6 @@ fn crate_renames_affect_the_artifact_dependency_name_and_multiple_names_are_allo
             "\
 [COMPILING] bar [..]
 [COMPILING] foo [..]
-[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
-",
-        )
-        .run();
-}
-
-#[cargo_test]
-// TODO(ST): try to actually access the artifacts
-#[ignore]
-fn check_rust_libs_are_available_with_lib_true() {
-    let p = project()
-        .file(
-            "Cargo.toml",
-            r#"
-                [package]
-                name = "foo"
-                version = "0.0.0"
-                authors = []
-                
-                [dependencies]
-                bar = { path = "bar/", artifact = "bin", lib = true }
-            "#,
-        )
-        .file(
-            "src/lib.rs",
-            r#"extern crate bar; static v: &str = env!("CARGO_BIN_FILE_BAR");"#,
-        )
-        .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
-        .file("bar/src/lib.rs", "")
-        .file("bar/src/main.rs", "")
-        .build();
-    p.cargo("check -Z unstable-options -Z bindeps")
-        .masquerade_as_nightly_cargo()
-        .with_stderr(
-            "\
-[CHECKING] bar [..]
-[CHECKING] foo [..]
 [FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
 ",
         )
@@ -776,14 +746,13 @@ fn check_missing_crate_type_in_package_fails() {
             .masquerade_as_nightly_cargo()
             .with_status(101)
             .with_stderr(
-                "[ERROR] Dependency `bar` in crate `foo` requires a `[..]` artifact to be present.",
+                "[ERROR] Dependency `bar = \"*\"` in crate `foo` requires a `[..]` artifact to be present.",
             )
             .run();
     }
 }
 
 #[cargo_test]
-#[ignore]
 fn env_vars_and_build_products_for_various_build_targets() {
     let p = project()
         .file(
@@ -794,56 +763,82 @@ fn env_vars_and_build_products_for_various_build_targets() {
                 version = "0.0.0"
                 authors = []
                 
+                [lib]
+                doctest = true
+                
                 [build-dependencies]
                 bar = { path = "bar/", artifact = ["cdylib", "staticlib"] }
                 
-                [dev-dependencies]
-                bar = { path = "bar/", artifact = ["bin:a", "bin:b"] }
-                
                 [dependencies]
                 bar = { path = "bar/", artifact = "bin", lib = true }
+                
+                [dev-dependencies]
+                bar = { path = "bar/", artifact = "bin:baz" }
             "#,
         )
-        .file("src/lib.rs", "")
-        .file("build.rs", "fn main() {}")
-        .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
-        .file("bar/src/lib.rs", r#"pub extern "C" fn bar_c() {}"#)
-        .build();
-    p.cargo("build -Z unstable-options -Z bindeps")
-        .masquerade_as_nightly_cargo()
-        .with_stderr(
-            "\
-[COMPILING] bar [..]
-[COMPILING] foo [..]
-[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
-",
-        )
-        .run();
-
-    let p = project()
         .file(
-            "Cargo.toml",
+            "src/lib.rs",
+            r#"
+                pub fn foo() {
+                    bar::c();
+                    env!("CARGO_BIN_DIR_BAR");
+                    let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR"));
+                    let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR_bar"));
+                    let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR_baz"));
+                }
+                
+                #[cfg(test)]
+                #[test]
+                fn env_unit() {
+                    env!("CARGO_BIN_DIR_BAR");
+                    let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR"));
+                    let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR_bar"));
+                    let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR_baz"));
+                }
+               "#,
+        )
+        .file(
+            "tests/main.rs",
+            r#"
+                #[test]
+                fn env_integration() {
+                    env!("CARGO_BIN_DIR_BAR");
+                    let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR"));
+                    let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR_bar"));
+                    let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR_baz"));
+                }"#,
+        )
+        .file("build.rs", "fn main() {}")
+        .file(
+            "bar/Cargo.toml",
             r#"
                 [package]
-                name = "foo"
-                version = "0.0.0"
+                name = "bar"
+                version = "0.5.0"
                 authors = []
                 
-                [dependencies]
-                bar = { path = "bar/", artifact = ["bin", "cdylib", "staticlib"] }
+                [lib]
+                crate-type = ["staticlib", "cdylib", "rlib"]
+                
+                [[bin]]
+                name = "bar"
+                
+                [[bin]]
+                name = "baz"
             "#,
         )
-        .file("src/lib.rs", "")
-        .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
-        .file("bar/src/lib.rs", "")
+        .file("bar/src/lib.rs", r#"pub extern "C" fn c() {}"#)
+        .file("bar/src/main.rs", "fn main() {}")
         .build();
-    p.cargo("build -Z unstable-options -Z bindeps")
+    p.cargo("test -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr(
             "\
 [COMPILING] bar [..]
 [COMPILING] foo [..]
-[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
+[FINISHED] test [unoptimized + debuginfo] target(s) in [..]
+[RUNNING] unittests [..]
+[RUNNING] tests/main.rs [..]
 ",
         )
         .run();

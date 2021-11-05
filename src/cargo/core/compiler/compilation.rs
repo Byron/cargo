@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
@@ -15,6 +15,8 @@ use crate::util::{config, CargoResult, Config};
 pub struct Doctest {
     /// What's being doctested
     pub unit: Unit,
+    /// The above units metadata key for accessing artifact environment variables.
+    pub unit_meta: Metadata,
     /// Arguments needed to pass to rustdoc to run this test.
     pub args: Vec<OsString>,
     /// Whether or not -Zunstable-options is needed.
@@ -82,6 +84,11 @@ pub struct Compilation<'cfg> {
     /// `RunCustomBuild` unit that generated these env vars.
     pub extra_env: HashMap<Metadata, Vec<(String, String)>>,
 
+    /// Environment variables generated artifact dependencies for consumption by future invocations of programs.
+    ///
+    /// The key is the artifact units metadata to uniquely identify the unit that created them.
+    pub artifact_env: HashMap<Metadata, HashSet<(String, PathBuf)>>,
+
     /// Libraries to test with rustdoc.
     pub to_doc_test: Vec<Doctest>,
 
@@ -141,6 +148,7 @@ impl<'cfg> Compilation<'cfg> {
             cdylibs: Vec::new(),
             root_crate_names: Vec::new(),
             extra_env: HashMap::new(),
+            artifact_env: HashMap::new(),
             to_doc_test: Vec::new(),
             config: bcx.config,
             host: bcx.host_triple().to_string(),
@@ -187,17 +195,23 @@ impl<'cfg> Compilation<'cfg> {
         &self,
         unit: &Unit,
         script_meta: Option<Metadata>,
+        unit_meta: Option<Metadata>,
     ) -> CargoResult<ProcessBuilder> {
         let rustdoc = ProcessBuilder::new(&*self.config.rustdoc()?);
         let cmd = fill_rustc_tool_env(rustdoc, unit);
-        let mut p = self.fill_env(cmd, &unit.pkg, script_meta, unit.kind, true)?;
-        unit.target.edition().cmd_edition_arg(&mut p);
+        let mut cmd = self.fill_env(cmd, &unit.pkg, script_meta, unit.kind, true)?;
+        if let Some(artifact_env) = unit_meta.and_then(|meta| self.artifact_env.get(&meta)) {
+            for (var, path) in artifact_env {
+                cmd.env(var, path);
+            }
+        }
+        unit.target.edition().cmd_edition_arg(&mut cmd);
 
         for crate_type in unit.target.rustc_crate_types() {
-            p.arg("--crate-type").arg(crate_type.as_str());
+            cmd.arg("--crate-type").arg(crate_type.as_str());
         }
 
-        Ok(p)
+        Ok(cmd)
     }
 
     /// Returns a [`ProcessBuilder`] appropriate for running a process for the

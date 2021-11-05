@@ -258,6 +258,7 @@ impl<'a, 'cfg> Context<'a, 'cfg> {
 
                 self.compilation.to_doc_test.push(compilation::Doctest {
                     unit: unit.clone(),
+                    unit_meta: self.files().metadata(&unit),
                     args,
                     unstable_opts,
                     linker: self.bcx.linker(unit.kind),

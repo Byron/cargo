@@ -163,6 +163,7 @@ fn run_doc_tests(
             args,
             unstable_opts,
             unit,
+            unit_meta,
             linker,
             script_meta,
         } = doctest_info;
@@ -190,7 +191,7 @@ fn run_doc_tests(
         }
 
         config.shell().status("Doc-tests", unit.target.name())?;
-        let mut p = compilation.rustdoc_process(unit, *script_meta)?;
+        let mut p = compilation.rustdoc_process(unit, *script_meta, Some(*unit_meta))?;
         p.arg("--crate-name").arg(&unit.target.crate_name());
         p.arg("--test");
 

@@ -1,4 +1,4 @@
-mod artifact;
+pub mod artifact;
 mod build_config;
 mod build_context;
 mod build_plan;
@@ -627,7 +627,7 @@ fn prepare_rustc(
 fn rustdoc(cx: &mut Context<'_, '_>, unit: &Unit) -> CargoResult<Work> {
     let bcx = cx.bcx;
     // script_metadata is not needed here, it is only for tests.
-    let mut rustdoc = cx.compilation.rustdoc_process(unit, None)?;
+    let mut rustdoc = cx.compilation.rustdoc_process(unit, None, None)?;
     rustdoc.inherit_jobserver(&cx.jobserver);
     let crate_name = unit.target.crate_name();
     rustdoc.arg("--crate-name").arg(&crate_name);
@@ -1107,8 +1107,6 @@ fn build_deps_args(
 
     let deps = cx.unit_deps(unit);
 
-    artifact::set_env(cx, deps, cmd)?;
-
     // If there is not one linkable target but should, rustc fails later
     // on if there is an `extern crate` for it. This may turn into a hard
     // error in the future (see PR #4797).
@@ -1142,6 +1140,21 @@ fn build_deps_args(
 
     for arg in extern_args(cx, unit, &mut unstable_opts)? {
         cmd.arg(arg);
+    }
+
+    if let Some(vars) = artifact::set_env(cx, deps, cmd)?
+        .and_then(|vars| cx.bcx.roots.contains(&unit).then(|| vars))
+    {
+        let previous = cx
+            .compilation
+            .artifact_env
+            .insert(cx.files().metadata(unit), vars);
+        assert!(
+            previous.is_none(),
+            "BUG: Expecting no previous value to exist for {:?}, but got {:#?}.",
+            unit,
+            previous
+        );
     }
 
     // This will only be set if we're already using a feature

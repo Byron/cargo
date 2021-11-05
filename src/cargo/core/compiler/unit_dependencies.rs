@@ -244,7 +244,7 @@ fn compute_deps(
     }
 
     let id = unit.pkg.package_id();
-    let filtered_deps = state.deps_filtered(unit, unit_for, &|dep| {
+    let dep_filter = &|dep: &Dependency| {
         // If this target is a build command, then we only want build
         // dependencies, otherwise we want everything *other than* build
         // dependencies.
@@ -266,7 +266,8 @@ fn compute_deps(
         // If we've gotten past all that, then this dependency is
         // actually used!
         true
-    });
+    };
+    let filtered_deps = state.deps_filtered(unit, unit_for, dep_filter);
 
     let mut ret = Vec::new();
     let mut dev_deps = Vec::new();
@@ -276,7 +277,7 @@ fn compute_deps(
         // as 'library as well'. We don't filter in the closure above as we still want to get a chance
         // to process them as pure non-lib artifact dependencies.
         let (has_artifact, artifact_lib) =
-            calc_artifact_deps(unit, unit_for, id, deps, state, &mut ret)?;
+            calc_artifact_deps(unit, unit_for, id, deps, state, dep_filter, &mut ret)?;
 
         let lib = package_lib(dep_pkg, has_artifact, artifact_lib);
         let lib = match lib {
@@ -416,6 +417,7 @@ fn calc_artifact_deps(
     dep_id: PackageId,
     deps: &HashSet<Dependency>,
     state: &State<'_, '_>,
+    filter: &dyn Fn(&Dependency) -> bool,
     ret: &mut Vec<UnitDep>,
 ) -> CargoResult<(bool, bool)> {
     let mut has_artifact = false;
@@ -423,6 +425,7 @@ fn calc_artifact_deps(
     let artifact_pkg = state.get(dep_id);
     for (dep, artifact) in deps
         .iter()
+        .filter(|dep| filter(dep))
         .filter_map(|dep| dep.artifact().map(|a| (dep, a)))
     {
         has_artifact = true;
@@ -612,8 +615,9 @@ fn match_artifacts_kind_with_targets<'a>(
         };
         if !found {
             anyhow::bail!(
-                "Dependency `{}` in crate `{}` requires a `{}` artifact to be present.",
+                "Dependency `{} = \"{}\"` in crate `{}` requires a `{}` artifact to be present.",
                 artifact_dep.name_in_toml(),
+                artifact_dep.version_req(),
                 unit.pkg.name(),
                 artifact_kind
             );
@@ -628,7 +632,8 @@ fn compute_deps_doc(
     state: &mut State<'_, '_>,
     unit_for: UnitFor,
 ) -> CargoResult<Vec<UnitDep>> {
-    let deps = state.deps(unit, unit_for);
+    let dep_filter = &|dep: &Dependency| dep.kind() == DepKind::Normal;
+    let deps = state.deps_filtered(unit, unit_for, dep_filter);
 
     // To document a library, we depend on dependencies actually being
     // built. If we're documenting *all* libraries, then we also depend on
@@ -636,7 +641,7 @@ fn compute_deps_doc(
     let mut ret = Vec::new();
     for (id, deps) in deps {
         let (has_artifact, artifact_lib) =
-            calc_artifact_deps(unit, unit_for, id, deps, state, &mut ret)?;
+            calc_artifact_deps(unit, unit_for, id, deps, state, dep_filter, &mut ret)?;
 
         let dep_pkg = state.get(id);
         let lib = package_lib(dep_pkg, has_artifact, artifact_lib);
