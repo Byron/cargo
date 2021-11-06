@@ -258,7 +258,13 @@ impl<'a, 'cfg> Context<'a, 'cfg> {
 
                 self.compilation.to_doc_test.push(compilation::Doctest {
                     unit: unit.clone(),
-                    unit_meta: self.files().metadata(&unit),
+                    artifact_meta: self
+                        .unit_deps(unit)
+                        .iter()
+                        .filter_map(|dep| {
+                            dep.unit.artifact.then(|| self.files().metadata(&dep.unit))
+                        })
+                        .collect(),
                     args,
                     unstable_opts,
                     linker: self.bcx.linker(unit.kind),

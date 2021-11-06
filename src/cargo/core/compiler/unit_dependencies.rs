@@ -502,7 +502,6 @@ fn compute_deps_custom_build(
     } else {
         let mut artifact_units: Vec<_> = build_artifact_requirements_to_units(
             unit,
-            script_unit_for,
             artifact_build_deps,
             state,
             CompileKind::Host, // TODO(ST): probably here we have to handle the artifact target more properly.
@@ -514,18 +513,20 @@ fn compute_deps_custom_build(
 
 fn build_artifact_requirements_to_units(
     parent: &Unit,
-    parent_unit_for: UnitFor,
     artifact_deps: Vec<(PackageId, &HashSet<Dependency>)>,
     state: &State<'_, '_>,
     compile_kind: CompileKind,
 ) -> CargoResult<Vec<UnitDep>> {
     let mut ret = Vec::new();
+    // So, this really wants to be true for build dependencies, otherwise resolver = "2" will fail.
+    let host_features = true;
+    let unit_for = UnitFor::new_host(host_features);
     for (dep_pkg_id, deps) in artifact_deps {
         let artifact_pkg = state.get(dep_pkg_id);
         for build_dep in deps.iter().filter(|d| d.is_build()) {
             ret.extend(artifact_targets_to_unit_deps(
                 parent,
-                parent_unit_for,
+                unit_for,
                 state,
                 compile_kind,
                 artifact_pkg,

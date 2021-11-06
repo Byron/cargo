@@ -1145,16 +1145,7 @@ fn build_deps_args(
     if let Some(vars) = artifact::set_env(cx, deps, cmd)?
         .and_then(|vars| cx.bcx.roots.contains(&unit).then(|| vars))
     {
-        let previous = cx
-            .compilation
-            .artifact_env
-            .insert(cx.files().metadata(unit), vars);
-        assert!(
-            previous.is_none(),
-            "BUG: Expecting no previous value to exist for {:?}, but got {:#?}.",
-            unit,
-            previous
-        );
+        cx.compilation.artifact_env.extend(vars);
     }
 
     // This will only be set if we're already using a feature

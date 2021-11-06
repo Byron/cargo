@@ -13,6 +13,7 @@ fn check_with_invalid_artifact_dependency() {
                 name = "foo"
                 version = "0.0.0"
                 authors = []
+                resolver = "2"
                 
                 [dependencies]
                 bar = { path = "bar/", artifact = "unknown" }
@@ -77,6 +78,7 @@ fn build_without_nightly_shows_warnings_and_ignores_them() {
                 name = "foo"
                 version = "0.0.0"
                 authors = []
+                resolver = "2"
                 
                 [dependencies]
                 bar = { path = "bar/", artifact = "bin" }
@@ -136,6 +138,7 @@ fn disallow_artifact_and_no_artifact_dep_to_same_package_within_the_same_dep_cat
                 name = "foo"
                 version = "0.0.0"
                 authors = []
+                resolver = "2"
                 
                 [dependencies]
                 bar = { path = "bar/", artifact = "bin" }
@@ -165,6 +168,7 @@ fn build_script_with_bin_artifacts() {
                 name = "foo"
                 version = "0.0.0"
                 authors = []
+                resolver = "2"
                 
                 [build-dependencies]
                 bar = { path = "bar/", artifact = ["bin", "staticlib", "cdylib"] }
@@ -274,6 +278,7 @@ fn build_script_with_bin_artifact_and_lib_false() {
                 name = "foo"
                 version = "0.0.0"
                 authors = []
+                resolver = "2"
                 
                 [build-dependencies]
                 bar = { path = "bar/", artifact = "bin" }
@@ -319,6 +324,7 @@ fn lib_with_bin_artifact_and_lib_false() {
                 name = "foo"
                 version = "0.0.0"
                 authors = []
+                resolver = "2"
                 
                 [dependencies]
                 bar = { path = "bar/", artifact = "bin" }
@@ -362,6 +368,7 @@ fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
                 name = "foo"
                 version = "0.0.0"
                 authors = []
+                resolver = "2"
                 
                 [build-dependencies]
                 bar-baz = { path = "bar/", artifact = "bin:baz-suffix", lib = true }
@@ -460,6 +467,7 @@ fn lib_with_selected_dashed_bin_artifact_and_lib_true() {
                 name = "foo"
                 version = "0.0.0"
                 authors = []
+                resolver = "2"
                 
                 [dependencies]
                 bar-baz = { path = "bar/", artifact = ["bin:baz-suffix", "staticlib", "cdylib"], lib = true }
@@ -528,6 +536,7 @@ fn allow_artifact_and_no_artifact_dep_to_same_package_within_different_dep_categ
                 name = "foo"
                 version = "0.0.0"
                 authors = []
+                resolver = "2"
                 
                 [dependencies]
                 bar = { path = "bar/", artifact = "bin" }
@@ -577,6 +586,7 @@ fn allow_dep_renames_with_multiple_versions() {
                 name = "foo"
                 version = "0.0.0"
                 authors = []
+                resolver = "2"
                 
                 [build-dependencies]
                 bar = { path = "bar/", artifact = "bin" }
@@ -622,6 +632,7 @@ fn allow_artifact_and_non_artifact_dependency_to_same_crate_if_these_are_not_the
                 name = "foo"
                 version = "0.0.0"
                 authors = []
+                resolver = "2"
                 
                 [build-dependencies]
                 bar = { path = "bar/", artifact = "bin", lib = false }
@@ -668,6 +679,7 @@ fn prevent_no_lib_warning_with_artifact_dependencies() {
                 name = "foo"
                 version = "0.0.0"
                 authors = []
+                resolver = "2"
                 
                 [dependencies]
                 bar = { path = "bar/", artifact = "bin" }
@@ -701,6 +713,7 @@ fn show_no_lib_warning_with_artifact_dependencies_that_have_no_lib_but_lib_true(
                 name = "foo"
                 version = "0.0.0"
                 authors = []
+                resolver = "2"
                 
                 [dependencies]
                 bar = { path = "bar/", artifact = "bin", lib = true }
@@ -716,6 +729,36 @@ fn show_no_lib_warning_with_artifact_dependencies_that_have_no_lib_but_lib_true(
         .with_stderr_contains("[COMPILING] bar v0.5.0 ([CWD]/bar)")
         .with_stderr_contains("[CHECKING] foo [..]")
         .with_stderr_contains("[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]")
+        .run();
+}
+
+#[cargo_test]
+fn resolver_2_build_dep_without_lib() {
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                edition = "2021"
+                
+                [build-dependencies]
+                bar = { path = "bar/", artifact = "bin" }
+            "#,
+        )
+        .file("src/lib.rs", "")
+        .file("build.rs", r#"
+                fn main() {
+                    let bar: std::path::PathBuf = std::env::var("CARGO_BIN_FILE_BAR").expect("CARGO_BIN_FILE_BAR").into();
+                    assert!(&bar.is_file()); 
+                }"#)
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file("bar/src/main.rs", "fn main() {}")
+        .build();
+    p.cargo("check -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
         .run();
 }
 
@@ -762,6 +805,7 @@ fn env_vars_and_build_products_for_various_build_targets() {
                 name = "foo"
                 version = "0.0.0"
                 authors = []
+                resolver = "2"
                 
                 [lib]
                 doctest = true
@@ -839,6 +883,7 @@ fn env_vars_and_build_products_for_various_build_targets() {
 [FINISHED] test [unoptimized + debuginfo] target(s) in [..]
 [RUNNING] unittests [..]
 [RUNNING] tests/main.rs [..]
+[DOCTEST] foo
 ",
         )
         .run();
@@ -863,6 +908,7 @@ fn publish_artifact_dep() {
             documentation = "foo"
             homepage = "foo"
             repository = "foo"
+            resolver = "2"
 
             [dependencies]
             bar = { version = "1.0", artifact = "bin", lib = true }
@@ -942,6 +988,7 @@ homepage = "foo"
 documentation = "foo"
 license = "MIT"
 repository = "foo"
+resolver = "2"
 [dependencies.bar]
 version = "1.0"
 artifact = ["bin"]
@@ -965,6 +1012,7 @@ fn doc_lib_true() {
                 name = "foo"
                 version = "0.0.1"
                 authors = []
+                resolver = "2"
 
                 [dependencies.bar]
                 path = "bar"
@@ -1018,6 +1066,7 @@ fn rustdoc_works_on_libs_with_artifacts_and_lib_false() {
                 name = "foo"
                 version = "0.0.1"
                 authors = []
+                resolver = "2"
 
                 [dependencies.bar]
                 path = "bar"

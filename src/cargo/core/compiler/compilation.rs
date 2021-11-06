@@ -16,7 +16,7 @@ pub struct Doctest {
     /// What's being doctested
     pub unit: Unit,
     /// The above units metadata key for accessing artifact environment variables.
-    pub unit_meta: Metadata,
+    pub artifact_meta: Vec<Metadata>,
     /// Arguments needed to pass to rustdoc to run this test.
     pub args: Vec<OsString>,
     /// Whether or not -Zunstable-options is needed.
@@ -195,12 +195,16 @@ impl<'cfg> Compilation<'cfg> {
         &self,
         unit: &Unit,
         script_meta: Option<Metadata>,
-        unit_meta: Option<Metadata>,
+        unit_meta: Option<&[Metadata]>,
     ) -> CargoResult<ProcessBuilder> {
         let rustdoc = ProcessBuilder::new(&*self.config.rustdoc()?);
         let cmd = fill_rustc_tool_env(rustdoc, unit);
         let mut cmd = self.fill_env(cmd, &unit.pkg, script_meta, unit.kind, true)?;
-        if let Some(artifact_env) = unit_meta.and_then(|meta| self.artifact_env.get(&meta)) {
+        if let Some(artifact_env) = unit_meta.map(|meta| {
+            meta.iter()
+                .filter_map(|meta| self.artifact_env.get(&meta))
+                .flat_map(std::convert::identity)
+        }) {
             for (var, path) in artifact_env {
                 cmd.env(var, path);
             }
