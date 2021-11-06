@@ -565,12 +565,76 @@ fn allow_artifact_and_no_artifact_dep_to_same_package_within_different_dep_categ
 }
 
 #[cargo_test]
-#[ignore]
-fn disallow_using_example_binaries_as_artifacts() {}
+fn disallow_using_example_binaries_as_artifacts() {
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                resolver = "2"
+                
+                [dependencies]
+                bar = { path = "bar/", artifact = "bin:one-example" }
+            "#,
+        )
+        .file("src/lib.rs", "")
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file("bar/src/main.rs", "fn main() {}")
+        .file("bar/examples/one-example.rs", "fn main() {}")
+        .build();
+    p.cargo("build -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_status(101)
+        .with_stderr(r#"[ERROR] Dependency `bar = "*"` in crate `foo` requires a `bin:one-example` artifact to be present."#)
+        .run();
+}
 
+/// From RFC 3028
+///
+/// > You may also specify separate dependencies with different artifact values, as well as
+/// dependencies on the same crate without artifact specified; for instance, you may have a
+/// build dependency on the binary of a crate and a normal dependency on the Rust library of the same crate.
 #[cargo_test]
-#[ignore]
-fn allow_artifact_and_non_artifact_dependency_to_same_crate() {}
+fn allow_artifact_and_non_artifact_dependency_to_same_crate() {
+    let p = project()
+            .file(
+                "Cargo.toml",
+                r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                resolver = "2"
+                
+                [build-dependencies]
+                bar = { path = "bar/", artifact = "bin" }
+                
+                [dependencies]
+                bar = { path = "bar/" }
+            "#,
+            )
+            .file("src/lib.rs", "pub fn foo() {bar::doit()}")
+            .file(
+                "build.rs",
+                r#"
+                fn main() {
+                    std::process::Command::new(std::env::var("CARGO_BIN_FILE_BAR").expect("BAR present")).status().unwrap();
+                }"#,
+            )
+            .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+            .file("bar/src/main.rs", "fn main() {}")
+            .file("bar/src/lib.rs", "pub fn doit() {}")
+        .build();
+
+    p.cargo("check -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_stderr_contains("[COMPILING] bar [..]")
+        .with_stderr_contains("[COMPILING] foo [..]")
+        .run();
+}
 
 #[cargo_test]
 fn allow_dep_renames_with_multiple_versions() {
@@ -820,6 +884,18 @@ fn env_vars_and_build_products_for_various_build_targets() {
                 bar = { path = "bar/", artifact = "bin:baz" }
             "#,
         )
+        .file("build.rs", r#"
+            fn main() {
+                let file: std::path::PathBuf = std::env::var("CARGO_CDYLIB_FILE_BAR").expect("CARGO_CDYLIB_FILE_BAR").into();
+                assert!(&file.is_file()); 
+                
+                let file: std::path::PathBuf = std::env::var("CARGO_STATICLIB_FILE_BAR").expect("CARGO_STATICLIB_FILE_BAR").into();
+                assert!(&file.is_file()); 
+                
+                assert!(std::env::var("CARGO_BIN_FILE_BAR").is_err());
+                assert!(std::env::var("CARGO_BIN_FILE_BAR_baz").is_err());
+            }
+        "#)
         .file(
             "src/lib.rs",
             r#"
@@ -829,6 +905,8 @@ fn env_vars_and_build_products_for_various_build_targets() {
                     let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR"));
                     let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR_bar"));
                     let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR_baz"));
+                    assert!(option_env!("CARGO_STATICLIB_FILE_BAR").is_none());
+                    assert!(option_env!("CARGO_CDYLIB_FILE_BAR").is_none());
                 }
                 
                 #[cfg(test)]
@@ -838,6 +916,8 @@ fn env_vars_and_build_products_for_various_build_targets() {
                     let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR"));
                     let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR_bar"));
                     let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR_baz"));
+                    assert!(option_env!("CARGO_STATICLIB_FILE_BAR").is_none());
+                    assert!(option_env!("CARGO_CDYLIB_FILE_BAR").is_none());
                 }
                "#,
         )
