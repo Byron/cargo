@@ -966,6 +966,15 @@ fn env_vars_and_build_products_for_various_build_targets() {
         .file(
             "src/lib.rs",
             r#"
+                //! ```
+                //! bar::c();
+                //! env!("CARGO_BIN_DIR_BAR");
+                //! let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR"));
+                //! let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR_bar"));
+                //! let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR_baz"));
+                //! assert!(option_env!("CARGO_STATICLIB_FILE_BAR").is_none());
+                //! assert!(option_env!("CARGO_CDYLIB_FILE_BAR").is_none());
+                //! ```
                 pub fn foo() {
                     bar::c();
                     env!("CARGO_BIN_DIR_BAR");
