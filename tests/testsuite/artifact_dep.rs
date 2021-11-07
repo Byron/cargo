@@ -1,6 +1,8 @@
 use cargo_test_support::compare::match_exact;
 use cargo_test_support::registry::Package;
-use cargo_test_support::{basic_bin_manifest, basic_manifest, project, publish, registry, Project};
+use cargo_test_support::{
+    basic_bin_manifest, basic_manifest, cross_compile, project, publish, registry, Project,
+};
 
 #[cargo_test]
 fn check_with_invalid_artifact_dependency() {
@@ -273,7 +275,8 @@ fn build_script_with_bin_artifacts() {
                 crate-type = ["staticlib", "cdylib"]
             "#,
         )
-        .file("bar/src/bin/bar.rs", "fn main() {}")
+        // compilation target is native for build scripts unless overridden
+        .file("bar/src/bin/bar.rs", &format!(r#"fn main() {{ assert_eq!(std::env::var("TARGET").unwrap(), "{}"); }}"#, cross_compile::native()))
         .file("bar/src/bin/baz.rs", "fn main() {}")
         .file("bar/src/lib.rs", "")
         .build();
@@ -392,7 +395,7 @@ fn lib_with_bin_artifact_and_lib_false() {
         .file(
             "src/lib.rs",
             r#"
-            fn main() {
+            fn foo() {
                bar::doit()
             }"#,
         )
@@ -697,6 +700,57 @@ fn allow_artifact_and_non_artifact_dependency_to_same_crate() {
         .masquerade_as_nightly_cargo()
         .with_stderr_contains("[COMPILING] bar [..]")
         .with_stderr_contains("[COMPILING] foo [..]")
+        .run();
+}
+
+#[cargo_test]
+#[ignore]
+fn build_script_adopts_target_platform_if_target_equals_target() {
+    if cross_compile::disabled() {
+        return;
+    }
+
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                resolver = "2"
+                
+                [build-dependencies]
+                bar = { path = "bar/", artifact = "bin", target = "target" }
+            "#,
+        )
+        .file("src/lib.rs", "")
+        .file("build.rs", "fn main() {}")
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file("bar/src/main.rs", "fn main() {}")
+        .file("bar/src/lib.rs", "pub fn doit() {}")
+        .build();
+
+    let alternate_target = cross_compile::alternate();
+    p.cargo("check -v -Z unstable-options -Z bindeps --target")
+        .arg(alternate_target)
+        .masquerade_as_nightly_cargo()
+        .with_stderr_does_not_contain(format!(
+            "[RUNNING] `rustc --crate-name build_script_build build.rs [..]--target {} [..]",
+            alternate_target
+        ))
+        .with_stderr_contains(format!(
+            "[RUNNING] `rustc --crate-name bar bar/src/lib.rs [..]--target {} [..]",
+            alternate_target
+        ))
+        .with_stderr_contains(format!(
+            "[RUNNING] `rustc --crate-name bar bar/src/main.rs [..]--target {} [..]",
+            alternate_target
+        ))
+        .with_stderr_contains(format!(
+            "[RUNNING] `rustc --crate-name foo [..]--target {} [..]",
+            alternate_target
+        ))
         .run();
 }
 
