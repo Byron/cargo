@@ -734,8 +734,60 @@ fn allow_artifact_and_non_artifact_dependency_to_same_crate() {
 }
 
 #[cargo_test]
-#[ignore]
-fn build_script_deps_adopt_specified_target_unconditionally() {}
+fn build_script_deps_adopt_specified_target_unconditionally() {
+    if cross_compile::disabled() {
+        return;
+    }
+
+    let target = cross_compile::alternate();
+    let p = project()
+        .file(
+            "Cargo.toml",
+            &format!(
+                r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                resolver = "2"
+                
+                [build-dependencies.bar]
+                path = "bar/"
+                artifact = "bin"
+                target = "{}"
+            "#,
+                target
+            ),
+        )
+        .file("src/lib.rs", "")
+        .file("build.rs", "fn main() {}")
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file("bar/src/main.rs", "fn main() {}")
+        .file("bar/src/lib.rs", "pub fn doit() {}")
+        .build();
+
+    p.cargo("check -v -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_stderr_does_not_contain(format!(
+            "[RUNNING] `rustc --crate-name build_script_build build.rs [..]--target {} [..]",
+            target
+        ))
+        .with_stderr_contains("[RUNNING] `rustc --crate-name build_script_build build.rs [..]")
+        .with_stderr_contains(format!(
+            "[RUNNING] `rustc --crate-name bar bar/src/lib.rs [..]--target {} [..]",
+            target
+        ))
+        .with_stderr_contains(format!(
+            "[RUNNING] `rustc --crate-name bar bar/src/main.rs [..]--target {} [..]",
+            target
+        ))
+        .with_stderr_does_not_contain(format!(
+            "[RUNNING] `rustc --crate-name foo [..]--target {} [..]",
+            target
+        ))
+        .with_stderr_contains("[RUNNING] `rustc --crate-name foo [..]")
+        .run();
+}
 
 #[cargo_test]
 fn build_script_deps_adopts_target_platform_if_target_equals_target() {
@@ -772,6 +824,7 @@ fn build_script_deps_adopts_target_platform_if_target_equals_target() {
             "[RUNNING] `rustc --crate-name build_script_build build.rs [..]--target {} [..]",
             alternate_target
         ))
+        .with_stderr_contains("[RUNNING] `rustc --crate-name build_script_build build.rs [..]")
         .with_stderr_contains(format!(
             "[RUNNING] `rustc --crate-name bar bar/src/lib.rs [..]--target {} [..]",
             alternate_target
