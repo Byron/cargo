@@ -625,7 +625,8 @@ fn allow_artifact_and_non_artifact_dependency_to_same_crate() {
                 "build.rs",
                 r#"
                 fn main() {
-                    std::process::Command::new(std::env::var("CARGO_BIN_FILE_BAR").expect("BAR present")).status().unwrap();
+                     assert!(option_env!("CARGO_BIN_FILE_BAR").is_none(), "no environment variables at build time");
+                     std::process::Command::new(std::env::var("CARGO_BIN_FILE_BAR").expect("BAR present")).status().unwrap();
                 }"#,
             )
             .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
