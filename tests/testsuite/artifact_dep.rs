@@ -735,7 +735,10 @@ fn allow_artifact_and_non_artifact_dependency_to_same_crate() {
 
 #[cargo_test]
 #[ignore]
-fn build_script_adopts_target_platform_if_target_equals_target() {
+fn build_script_deps_adopt_specified_target_unconditionally() {}
+
+#[cargo_test]
+fn build_script_deps_adopts_target_platform_if_target_equals_target() {
     if cross_compile::disabled() {
         return;
     }

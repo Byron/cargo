@@ -16,9 +16,10 @@
 //! graph of `Unit`s, which capture these properties.
 
 use crate::core::compiler::unit_graph::{UnitDep, UnitGraph};
-use crate::core::compiler::{CompileKind, CompileMode, RustcTargetData, Unit};
-use crate::core::compiler::{CrateType, UnitInterner};
-use crate::core::dependency::{ArtifactKind, DepKind};
+use crate::core::compiler::{
+    CompileKind, CompileMode, CrateType, RustcTargetData, Unit, UnitInterner,
+};
+use crate::core::dependency::{ArtifactKind, ArtifactTarget, DepKind};
 use crate::core::profiles::{Profile, Profiles, UnitFor};
 use crate::core::resolver::features::{FeaturesFor, ResolvedFeatures};
 use crate::core::resolver::Resolve;
@@ -201,14 +202,26 @@ fn deps_of_roots(roots: &[Unit], state: &mut State<'_, '_>) -> CargoResult<()> {
         } else {
             UnitFor::new_normal()
         };
-        deps_of(unit, state, unit_for)?;
+        deps_of(unit, unit.kind, state, unit_for)?;
     }
 
     Ok(())
 }
 
 /// Compute the dependencies of a single unit.
-fn deps_of(unit: &Unit, state: &mut State<'_, '_>, unit_for: UnitFor) -> CargoResult<()> {
+///
+/// About `root_unit_compile_kind`:
+/// The compile kind of the root unit for which artifact dependencies are built.
+/// This is required particularly for the `target = "target"` setting of artifact dependencies
+/// which mean to inherit the `--target` specified on the command-line. However, this is a multi-value
+/// argument and root units are already created to reflect one unit per --target. Thus we have to build
+/// one artifact with the correct target for each of these trees.
+fn deps_of(
+    unit: &Unit,
+    root_unit_compile_kind: CompileKind,
+    state: &mut State<'_, '_>,
+    unit_for: UnitFor,
+) -> CargoResult<()> {
     // Currently the `unit_dependencies` map does not include `unit_for`. This should
     // be safe for now. `TestDependency` only exists to clear the `panic`
     // flag, and you'll never ask for a `unit` with `panic` set as a
@@ -216,12 +229,17 @@ fn deps_of(unit: &Unit, state: &mut State<'_, '_>, unit_for: UnitFor) -> CargoRe
     // requested unit's settings are the same as `Any`, `CustomBuild` can't
     // affect anything else in the hierarchy.
     if !state.unit_dependencies.contains_key(unit) {
-        let unit_deps = compute_deps(unit, state, unit_for)?;
+        let unit_deps = compute_deps(unit, root_unit_compile_kind, state, unit_for)?;
         state
             .unit_dependencies
             .insert(unit.clone(), unit_deps.clone());
         for unit_dep in unit_deps {
-            deps_of(&unit_dep.unit, state, unit_dep.unit_for)?;
+            deps_of(
+                &unit_dep.unit,
+                root_unit_compile_kind,
+                state,
+                unit_dep.unit_for,
+            )?;
         }
     }
     Ok(())
@@ -233,14 +251,15 @@ fn deps_of(unit: &Unit, state: &mut State<'_, '_>, unit_for: UnitFor) -> CargoRe
 /// is the profile type that should be used for dependencies of the unit.
 fn compute_deps(
     unit: &Unit,
+    root_unit_compile_kind: CompileKind,
     state: &mut State<'_, '_>,
     unit_for: UnitFor,
 ) -> CargoResult<Vec<UnitDep>> {
     if unit.mode.is_run_custom_build() {
-        return compute_deps_custom_build(unit, unit_for, state);
+        return compute_deps_custom_build(unit, root_unit_compile_kind, unit_for, state);
     } else if unit.mode.is_doc() {
         // Note: this does not include doc test.
-        return compute_deps_doc(unit, state, unit_for);
+        return compute_deps_doc(unit, root_unit_compile_kind, state, unit_for);
     }
 
     let id = unit.pkg.package_id();
@@ -455,6 +474,7 @@ fn calc_artifact_deps(
 /// the returned set of units must all be run before `unit` is run.
 fn compute_deps_custom_build(
     unit: &Unit,
+    root_unit_compile_kind: CompileKind,
     unit_for: UnitFor,
     state: &State<'_, '_>,
 ) -> CargoResult<Vec<UnitDep>> {
@@ -502,9 +522,9 @@ fn compute_deps_custom_build(
     } else {
         let mut artifact_units: Vec<_> = build_artifact_requirements_to_units(
             unit,
+            root_unit_compile_kind,
             artifact_build_deps,
             state,
-            CompileKind::Host, // TODO(ST): probably here we have to handle the artifact target more properly.
         )?;
         artifact_units.push(compile_script_unit);
         Ok(artifact_units)
@@ -513,9 +533,9 @@ fn compute_deps_custom_build(
 
 fn build_artifact_requirements_to_units(
     parent: &Unit,
+    root_unit_compile_kind: CompileKind,
     artifact_deps: Vec<(PackageId, &HashSet<Dependency>)>,
     state: &State<'_, '_>,
-    compile_kind: CompileKind,
 ) -> CargoResult<Vec<UnitDep>> {
     let mut ret = Vec::new();
     // So, this really wants to be true for build dependencies, otherwise resolver = "2" will fail.
@@ -528,7 +548,15 @@ fn build_artifact_requirements_to_units(
                 parent,
                 unit_for,
                 state,
-                compile_kind,
+                build_dep
+                    .artifact()
+                    .expect("artifact dep")
+                    .target()
+                    .map(|kind| match kind {
+                        ArtifactTarget::Force(kind) => kind,
+                        ArtifactTarget::BuildDependencyAssumeTarget => root_unit_compile_kind,
+                    })
+                    .unwrap_or(CompileKind::Host),
                 artifact_pkg,
                 build_dep,
             )?);
@@ -550,7 +578,7 @@ fn artifact_targets_to_unit_deps(
         .flat_map(|target| {
             // TODO(ST): handle target="target", there isn't even a test for that yet
             // We split target libraries into individual units, even though rustc is able to produce multiple
-            // kinds in an single invocation for the sole reason that each artifact kind has its own output directoy,
+            // kinds in an single invocation for the sole reason that each artifact kind has its own output directory,
             // something we can't easily teach rustc for now.
             match target.kind() {
                 TargetKind::Lib(kinds) => {
@@ -630,6 +658,7 @@ fn match_artifacts_kind_with_targets<'a>(
 /// Returns the dependencies necessary to document a package.
 fn compute_deps_doc(
     unit: &Unit,
+    root_unit_compile_kind: CompileKind,
     state: &mut State<'_, '_>,
     unit_for: UnitFor,
 ) -> CargoResult<Vec<UnitDep>> {
@@ -717,7 +746,7 @@ fn compute_deps_doc(
         for scrape_unit in state.scrape_units.iter() {
             // This needs to match the FeaturesFor used in cargo_compile::generate_targets.
             let unit_for = UnitFor::new_host(scrape_unit.target.proc_macro());
-            deps_of(scrape_unit, state, unit_for)?;
+            deps_of(scrape_unit, root_unit_compile_kind, state, unit_for)?;
             ret.push(new_unit_dep(
                 state,
                 scrape_unit,
