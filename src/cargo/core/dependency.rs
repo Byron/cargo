@@ -7,6 +7,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use crate::core::compiler::{CompileKind, CompileTarget};
 use crate::core::{PackageId, SourceId, Summary};
 use crate::util::errors::CargoResult;
 use crate::util::interning::InternedString;
@@ -452,7 +453,7 @@ impl Artifact {
         Ok(Artifact {
             inner: Rc::new(kinds),
             is_lib,
-            target: target.map(ArtifactTarget::parse),
+            target: target.map(ArtifactTarget::parse).transpose()?,
         })
     }
 
@@ -477,14 +478,21 @@ pub enum ArtifactTarget {
     BuildDependencyAssumeTarget,
     /// Then name of the platform triple, like `x86_64-apple-darwin`, that this artifact will be always be build for, no matter
     /// if it is a build, normal or dev dependency.
-    ForceName(InternedString),
+    Force(CompileKind),
 }
 
 impl ArtifactTarget {
-    pub fn parse(target: &str) -> ArtifactTarget {
-        match target {
+    pub fn parse(target: &str) -> CargoResult<ArtifactTarget> {
+        Ok(match target {
             "target" => ArtifactTarget::BuildDependencyAssumeTarget,
-            name => ArtifactTarget::ForceName(InternedString::new(name)),
+            name => ArtifactTarget::Force(CompileKind::Target(CompileTarget::new(name)?)),
+        })
+    }
+
+    pub fn to_compile_kind(&self) -> Option<CompileKind> {
+        match self {
+            ArtifactTarget::BuildDependencyAssumeTarget => None,
+            ArtifactTarget::Force(kind) => Some(*kind),
         }
     }
 }

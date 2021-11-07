@@ -748,11 +748,10 @@ impl<'cfg> RustcTargetData<'cfg> {
         // Get all kinds we currently know about.
         //
         // For now, targets can only ever come from the root workspace
-        // units as artifact dependencies are not a thing yet, so this
-        // correctly represents all the kinds that can happen. When we
-        // have artifact dependencies or other ways for targets to
-        // appear at places that are not the root units, we may have
-        // to revisit this.
+        // units and artifact dependencies, so this
+        // correctly represents all the kinds that can happen. When we have
+        // other ways for targets to appear at places that are not the root units,
+        // we may have to revisit this.
         let all_kinds = requested_kinds
             .iter()
             .copied()
@@ -761,6 +760,11 @@ impl<'cfg> RustcTargetData<'cfg> {
                     .default_kind()
                     .into_iter()
                     .chain(p.manifest().forced_kind())
+                    .into_iter()
+                    .chain(p.manifest().dependencies().iter().filter_map(|d| {
+                        d.artifact()
+                            .and_then(|a| a.target().and_then(|t| t.to_compile_kind()))
+                    }))
             }));
         for kind in all_kinds {
             if let CompileKind::Target(target) = kind {

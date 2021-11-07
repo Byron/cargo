@@ -102,6 +102,36 @@ Caused by:
 }
 
 #[cargo_test]
+fn check_with_invalid_target_triple() {
+    // invalid name
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                resolver = "2"
+                
+                [dependencies]
+                bar = { path = "bar/", artifact = "bin", target = "unknown-target-triple" }
+            "#,
+        )
+        .file("src/lib.rs", "")
+        .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
+        .file("bar/src/main.rs", "fn main() {}")
+        .build();
+    p.cargo("check -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_stderr_contains(
+            r#"[..]Could not find specification for target "unknown-target-triple"[..]"#,
+        )
+        .with_status(101)
+        .run();
+}
+
+#[cargo_test]
 fn build_without_nightly_shows_warnings_and_ignores_them() {
     let p = project()
         .file(
