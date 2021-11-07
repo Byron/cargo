@@ -684,8 +684,21 @@ fn dependencies_of_dependencies_work_in_artifacts() {
         .file("bar/src/lib.rs", r#"pub fn bar() {baz::baz()}"#)
         .file("bar/src/main.rs", r#"fn main() {bar::bar()}"#)
         .build();
-    p.cargo("build -v -Z unstable-options -Z bindeps")
+    p.cargo("build -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
+        .run();
+
+    // cargo tree sees artifacts as the dependency kind they are in and doesn't do anything special with it.
+    p.cargo("tree -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_stdout(
+            "\
+foo v0.0.0 ([CWD])
+[build-dependencies]
+└── bar v0.5.0 ([CWD]/bar)
+    └── baz v1.0.0
+",
+        )
         .run();
 }
 
