@@ -641,6 +641,55 @@ fn allow_artifact_and_non_artifact_dependency_to_same_crate() {
 }
 
 #[cargo_test]
+fn dependencies_of_dependencies_work_in_artifacts() {
+    Package::new("baz", "1.0.0")
+        .file("src/lib.rs", "pub fn baz() {}")
+        .publish();
+
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                resolver = "2"
+                
+                [build-dependencies]
+                bar = { path = "bar/", artifact = "bin" }
+            "#,
+        )
+        .file("src/lib.rs", "")
+        .file(
+            "build.rs",
+            r#"
+            fn main() {
+                std::process::Command::new(std::env::var("CARGO_BIN_FILE_BAR").expect("BAR present")).status().unwrap();
+            }
+            "#,
+        )
+        .file(
+            "bar/Cargo.toml",
+            r#"
+                [package]
+                name = "bar"
+                version = "0.5.0"
+                authors = []
+                
+                [dependencies]
+                baz = "1.0.0"
+            "#,
+        )
+        .file("bar/src/lib.rs", r#"pub fn bar() {baz::baz()}"#)
+        .file("bar/src/main.rs", r#"fn main() {bar::bar()}"#)
+        .build();
+    p.cargo("build -v -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .run();
+}
+
+#[cargo_test]
 fn allow_dep_renames_with_multiple_versions() {
     Package::new("bar", "1.0.0")
         .file("src/main.rs", r#"fn main() {println!("1.0.0")}"#)

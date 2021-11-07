@@ -202,6 +202,8 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
             self.build_script_dir(unit)
         } else if unit.target.is_example() {
             self.layout(unit.kind).examples().to_path_buf()
+        } else if unit.artifact {
+            self.artifact_dir(unit).into()
         } else {
             self.deps_dir(unit).to_path_buf()
         }
@@ -244,11 +246,7 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
     /// Returns the directories where Rust crate dependencies are found for the
     /// specified unit.
     pub fn deps_dir(&self, unit: &Unit) -> Cow<'_, Path> {
-        if unit.artifact {
-            self.artifact_dir(unit).into()
-        } else {
-            self.layout(unit.kind).deps().into()
-        }
+        self.layout(unit.kind).deps().into()
     }
 
     /// Directory where the fingerprint for the given unit should go.
