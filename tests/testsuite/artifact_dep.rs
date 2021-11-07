@@ -616,7 +616,11 @@ fn allow_artifact_and_non_artifact_dependency_to_same_crate() {
                 bar = { path = "bar/" }
             "#,
             )
-            .file("src/lib.rs", "pub fn foo() {bar::doit()}")
+            .file("src/lib.rs", r#"
+                    pub fn foo() {
+                         bar::doit();
+                         assert!(option_env!("CARGO_BIN_FILE_BAR").is_none());
+                    }"#)
             .file(
                 "build.rs",
                 r#"
