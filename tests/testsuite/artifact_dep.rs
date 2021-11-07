@@ -30,7 +30,7 @@ fn check_with_invalid_artifact_dependency() {
 [ERROR] failed to parse manifest at `[..]/Cargo.toml`
 
 Caused by:
-  'unknown' is not a valid artifact specifier.
+  'unknown' is not a valid artifact specifier
 ",
         )
         .with_status(101)
@@ -61,7 +61,38 @@ Caused by:
 [ERROR] failed to parse manifest at `[..]/Cargo.toml`
 
 Caused by:
-  'lib' specifier cannot be used without an 'artifact = …' value
+  'lib' specifier cannot be used without an 'artifact = …' value (bar)
+",
+        )
+        .with_status(101)
+        .run();
+
+    // target specified without artifact
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                
+                [dependencies]
+                bar = { path = "bar/", target = "target" }
+            "#,
+        )
+        .file("src/lib.rs", "")
+        .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
+        .file("bar/src/lib.rs", "")
+        .build();
+    p.cargo("check -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_stderr(
+            "\
+[ERROR] failed to parse manifest at `[..]/Cargo.toml`
+
+Caused by:
+  'target' specifier cannot be used without an 'artifact = …' value (bar)
 ",
         )
         .with_status(101)
@@ -91,7 +122,7 @@ fn build_without_nightly_shows_warnings_and_ignores_them() {
     p.cargo("check")
         .with_stderr(
             "\
-[WARNING] `artifact = [..]` ignored for dependency `bar` as `-Z bindeps` is not set.
+[WARNING] `artifact = [..]` ignored as `-Z bindeps` is not set (bar)
 [CHECKING] bar [..]
 [CHECKING] foo [..]
 [FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
@@ -119,7 +150,35 @@ fn build_without_nightly_shows_warnings_and_ignores_them() {
     p.cargo("check")
         .with_stderr(
             "\
-[WARNING] `lib` specifiers need an `artifact = …` value and would fail the operation when `-Z bindeps` is provided.
+[WARNING] `lib` specifiers need an `artifact = …` value and would fail the operation when `-Z bindeps` is provided (bar)
+[CHECKING] bar [..]
+[CHECKING] foo [..]
+[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
+",
+        )
+        .run();
+
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                
+                [dependencies]
+                bar = { path = "bar/", target = "target" }
+            "#,
+        )
+        .file("src/lib.rs", "extern crate bar;") // this would fail if artifacts are available as these aren't libs by default
+        .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
+        .file("bar/src/lib.rs", "")
+        .build();
+    p.cargo("check")
+        .with_stderr(
+            "\
+[WARNING] `target` specifiers need an `artifact = …` value and would fail the operation when `-Z bindeps` is provided (bar)
 [CHECKING] bar [..]
 [CHECKING] foo [..]
 [FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
@@ -927,6 +986,33 @@ fn check_missing_crate_type_in_package_fails() {
 }
 
 #[cargo_test]
+fn check_target_equals_target_in_non_build_dependency_causes_warning() {
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+
+                [dependencies]
+                bar = { path = "bar/", artifact = "bin", target = "target" }
+            "#,
+        )
+        .file("src/lib.rs", "")
+        .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
+        .file("bar/src/main.rs", "fn main() {}")
+        .build();
+    p.cargo("check -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_stderr_contains(
+            "[WARNING] `target = \"target\"` in normal- or dev-dependencies has no effect (bar)",
+        )
+        .run();
+}
+
+#[cargo_test]
 fn env_vars_and_build_products_for_various_build_targets() {
     let p = project()
         .file(
@@ -1070,7 +1156,7 @@ fn publish_artifact_dep() {
             bar = { version = "1.0", artifact = "bin", lib = true }
             
             [build-dependencies]
-            baz = { version = "1.0", artifact = ["bin:a", "cdylib", "staticlib"] }
+            baz = { version = "1.0", artifact = ["bin:a", "cdylib", "staticlib"], target = "target" }
             "#,
         )
         .file("src/lib.rs", "")
@@ -1151,7 +1237,8 @@ artifact = ["bin"]
 lib = true
 [build-dependencies.baz]
 version = "1.0"
-artifact = ["bin:a", "cdylib", "staticlib"]"#,
+artifact = ["bin:a", "cdylib", "staticlib"]
+target = "target""#,
                 cargo::core::package::MANIFEST_PREAMBLE
             ),
         )],

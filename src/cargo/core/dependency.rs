@@ -434,10 +434,15 @@ impl Dependency {
 pub struct Artifact {
     inner: Rc<Vec<ArtifactKind>>,
     is_lib: bool,
+    target: Option<ArtifactTarget>,
 }
 
 impl Artifact {
-    pub(crate) fn parse(artifacts: &StringOrVec, is_lib: bool) -> CargoResult<Self> {
+    pub(crate) fn parse(
+        artifacts: &StringOrVec,
+        is_lib: bool,
+        target: Option<&str>,
+    ) -> CargoResult<Self> {
         let kinds = ArtifactKind::validate(
             artifacts
                 .iter()
@@ -447,6 +452,7 @@ impl Artifact {
         Ok(Artifact {
             inner: Rc::new(kinds),
             is_lib,
+            target: target.map(ArtifactTarget::parse),
         })
     }
 
@@ -456,6 +462,30 @@ impl Artifact {
 
     pub(crate) fn is_lib(&self) -> bool {
         self.is_lib
+    }
+
+    pub(crate) fn target(&self) -> Option<ArtifactTarget> {
+        self.target
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Ord, PartialOrd, Debug)]
+pub enum ArtifactTarget {
+    /// Only applicable to build-dependencies, causing them to be built for the given target (i.e. via `--target <triple>`
+    /// instead of for the host.
+    /// Has no effect on non-build dependencies.
+    BuildDependencyAssumeTarget,
+    /// Then name of the platform triple, like `x86_64-apple-darwin`, that this artifact will be always be build for, no matter
+    /// if it is a build, normal or dev dependency.
+    ForceName(InternedString),
+}
+
+impl ArtifactTarget {
+    pub fn parse(target: &str) -> ArtifactTarget {
+        match target {
+            "target" => ArtifactTarget::BuildDependencyAssumeTarget,
+            name => ArtifactTarget::ForceName(InternedString::new(name)),
+        }
     }
 }
 
@@ -490,9 +520,7 @@ impl ArtifactKind {
                 return kind
                     .strip_prefix("bin:")
                     .map(|bin_name| ArtifactKind::SelectedBinary(InternedString::new(bin_name)))
-                    .ok_or_else(|| {
-                        anyhow::anyhow!("'{}' is not a valid artifact specifier.", kind)
-                    })
+                    .ok_or_else(|| anyhow::anyhow!("'{}' is not a valid artifact specifier", kind))
             }
         })
     }
