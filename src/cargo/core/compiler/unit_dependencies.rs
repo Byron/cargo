@@ -290,13 +290,14 @@ fn compute_deps(
 
     let mut ret = Vec::new();
     let mut dev_deps = Vec::new();
-    for (id, deps) in filtered_deps {
-        let dep_pkg = state.get(id);
+    for (dep_pkg_id, deps) in filtered_deps {
+        let dep_pkg = state.get(dep_pkg_id);
         // Artifact dependencies are only counted as standard libraries if they are marked
         // as 'library as well'. We don't filter in the closure above as we still want to get a chance
         // to process them as pure non-lib artifact dependencies.
-        let (has_artifact, artifact_lib) =
-            calc_artifact_deps(unit, unit_for, id, deps, state, dep_filter, &mut ret)?;
+        let (has_artifact, artifact_lib) = calc_artifact_deps(
+            unit, unit_for, dep_pkg_id, deps, state, dep_filter, &mut ret,
+        )?;
 
         let lib = package_lib(dep_pkg, has_artifact, artifact_lib);
         let lib = match lib {
@@ -459,7 +460,13 @@ fn calc_artifact_deps(
                 unit,
                 unit_for,
                 state,
-                unit.kind,
+                artifact
+                    .target()
+                    .and_then(|t| match t {
+                        ArtifactTarget::BuildDependencyAssumeTarget => None,
+                        ArtifactTarget::Force(kind) => Some(CompileKind::Target(kind)),
+                    })
+                    .unwrap_or(unit.kind),
                 artifact_pkg,
                 dep,
             )?);
@@ -533,7 +540,7 @@ fn compute_deps_custom_build(
 
 fn build_artifact_requirements_to_units(
     parent: &Unit,
-    root_unit_compile_kind: CompileKind,
+    root_unit_compile_target: CompileKind,
     artifact_deps: Vec<(PackageId, &HashSet<Dependency>)>,
     state: &State<'_, '_>,
 ) -> CargoResult<Vec<UnitDep>> {
@@ -553,8 +560,8 @@ fn build_artifact_requirements_to_units(
                     .expect("artifact dep")
                     .target()
                     .map(|kind| match kind {
-                        ArtifactTarget::Force(kind) => kind,
-                        ArtifactTarget::BuildDependencyAssumeTarget => root_unit_compile_kind,
+                        ArtifactTarget::Force(target) => CompileKind::Target(target),
+                        ArtifactTarget::BuildDependencyAssumeTarget => root_unit_compile_target,
                     })
                     .unwrap_or(CompileKind::Host),
                 artifact_pkg,
@@ -576,7 +583,6 @@ fn artifact_targets_to_unit_deps(
     let ret = match_artifacts_kind_with_targets(parent, dep, artifact_pkg.targets())?
         .into_iter()
         .flat_map(|target| {
-            // TODO(ST): handle target="target", there isn't even a test for that yet
             // We split target libraries into individual units, even though rustc is able to produce multiple
             // kinds in an single invocation for the sole reason that each artifact kind has its own output directory,
             // something we can't easily teach rustc for now.
@@ -904,13 +910,11 @@ fn new_unit_dep_with_profile(
     profile: Profile,
     artifact: bool,
 ) -> CargoResult<UnitDep> {
-    // TODO: consider making extern_crate_name return InternedString?
     let (extern_crate_name, dep_name) = state.resolve().extern_crate_name_and_dep_name(
         parent.pkg.package_id(),
         pkg.package_id(),
         target,
     )?;
-    let extern_crate_name = InternedString::new(&extern_crate_name);
     let public = state
         .resolve()
         .is_public_dep(parent.pkg.package_id(), pkg.package_id());

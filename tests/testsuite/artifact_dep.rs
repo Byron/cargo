@@ -1,7 +1,8 @@
 use cargo_test_support::compare::match_exact;
 use cargo_test_support::registry::Package;
 use cargo_test_support::{
-    basic_bin_manifest, basic_manifest, cross_compile, project, publish, registry, Project,
+    basic_bin_manifest, basic_manifest, cross_compile, project, publish, registry, rustc_host,
+    Project,
 };
 
 #[cargo_test]
@@ -760,7 +761,11 @@ fn build_script_deps_adopt_specified_target_unconditionally() {
             ),
         )
         .file("src/lib.rs", "")
-        .file("build.rs", "fn main() {}")
+        .file("build.rs", r#"
+                fn main() {
+                    let bar: std::path::PathBuf = std::env::var("CARGO_BIN_FILE_BAR").expect("CARGO_BIN_FILE_BAR").into();
+                    assert!(&bar.is_file()); 
+                }"#)
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
         .file("bar/src/main.rs", "fn main() {}")
         .file("bar/src/lib.rs", "pub fn doit() {}")
@@ -789,6 +794,212 @@ fn build_script_deps_adopt_specified_target_unconditionally() {
         .run();
 }
 
+/// inverse RFC-3176
+#[cargo_test]
+fn build_script_deps_adopt_do_not_allow_multiple_targets_under_different_name_and_same_version() {
+    if cross_compile::disabled() {
+        return;
+    }
+
+    let alternate = cross_compile::alternate();
+    let native = cross_compile::native();
+    let p = project()
+        .file(
+            "Cargo.toml",
+            &format!(
+                r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                resolver = "2"
+                
+                [build-dependencies.bar]
+                path = "bar/"
+                artifact = "bin"
+                target = "{}"
+                
+                [build-dependencies.bar-native]
+                package = "bar"
+                path = "bar/"
+                artifact = "bin"
+                target = "{}"
+            "#,
+                alternate,
+                native
+            ),
+        )
+        .file("src/lib.rs", "")
+        .file("build.rs", r#"
+                fn main() {
+                    let bar: std::path::PathBuf = std::env::var("CARGO_BIN_FILE_BAR").expect("CARGO_BIN_FILE_BAR").into();
+                    assert!(&bar.is_file()); 
+                    let bar_native: std::path::PathBuf = std::env::var("CARGO_BIN_FILE_BAR_NATIVE_bar").expect("CARGO_BIN_FILE_BAR_NATIVE_bar").into();
+                    assert!(&bar_native.is_file()); 
+                    assert_ne!(bar_native, bar, "should build different binaries due to different targets"); 
+                }"#)
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file("bar/src/main.rs", "fn main() {}")
+        .build();
+
+    p.cargo("check -v -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_status(101)
+        .with_stderr(format!(
+            "error: the crate `foo v0.0.0 ([CWD])` depends on crate `bar v0.5.0 ([CWD]/bar)` multiple times with different names",
+        ))
+        .run();
+}
+
+#[cargo_test]
+fn non_build_script_deps_adopt_specified_target_unconditionally() {
+    if cross_compile::disabled() {
+        return;
+    }
+
+    let target = cross_compile::alternate();
+    let p = project()
+        .file(
+            "Cargo.toml",
+            &format!(
+                r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                resolver = "2"
+                
+                [dependencies.bar]
+                path = "bar/"
+                artifact = "bin"
+                target = "{}"
+            "#,
+                target
+            ),
+        )
+        .file(
+            "src/lib.rs",
+            r#"pub fn foo() { let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR")); }"#,
+        )
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file("bar/src/main.rs", "fn main() {}")
+        .file("bar/src/lib.rs", "pub fn doit() {}")
+        .build();
+
+    p.cargo("check -v -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_stderr_contains(format!(
+            "[RUNNING] `rustc --crate-name bar bar/src/lib.rs [..]--target {} [..]",
+            target
+        ))
+        .with_stderr_contains(format!(
+            "[RUNNING] `rustc --crate-name bar bar/src/main.rs [..]--target {} [..]",
+            target
+        ))
+        .with_stderr_does_not_contain(format!(
+            "[RUNNING] `rustc --crate-name foo [..]--target {} [..]",
+            target
+        ))
+        .with_stderr_contains("[RUNNING] `rustc --crate-name foo [..]")
+        .run();
+}
+
+#[cargo_test]
+fn no_cross_doctests_works_with_artifacts() {
+    if cross_compile::disabled() {
+        return;
+    }
+
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.1"
+                authors = []
+                resolver = "2"
+                
+                [dependencies]
+                bar = { path = "bar/", artifact = "bin", lib = true }
+            "#,
+        )
+        .file(
+            "src/lib.rs",
+            r#"
+                //! ```
+                //! env!("CARGO_BIN_DIR_BAR");
+                //! let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR"));
+                //! ```
+                pub fn foo() {
+                    env!("CARGO_BIN_DIR_BAR");
+                    let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR"));
+                }
+            "#,
+        )
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file("bar/src/lib.rs", r#"pub extern "C" fn c() {}"#)
+        .file("bar/src/main.rs", "fn main() {}")
+        .build();
+
+    let target = rustc_host();
+    p.cargo("test -Z unstable-options -Z bindeps --target")
+        .arg(&target)
+        .masquerade_as_nightly_cargo()
+        .with_stderr(&format!(
+            "\
+[COMPILING] bar v0.5.0 ([CWD]/bar)
+[COMPILING] foo v0.0.1 ([CWD])
+[FINISHED] test [unoptimized + debuginfo] target(s) in [..]
+[RUNNING] [..] (target/{triple}/debug/deps/foo-[..][EXE])
+[DOCTEST] foo
+",
+            triple = target
+        ))
+        .run();
+
+    println!("c");
+    let target = cross_compile::alternate();
+
+    // This will build the library, but does not build or run doc tests.
+    // This should probably be a warning or error.
+    p.cargo("test -Z unstable-options -Z bindeps -v --doc --target")
+        .arg(&target)
+        .masquerade_as_nightly_cargo()
+        .with_stderr(format!(
+            "\
+[COMPILING] bar v0.5.0 ([CWD]/bar)
+[RUNNING] `rustc --crate-name bar bar/src/lib.rs [..]--target {triple} [..]
+[RUNNING] `rustc --crate-name bar bar/src/main.rs [..]--target {triple} [..]
+[COMPILING] foo v0.0.1 ([CWD])
+[RUNNING] `rustc --crate-name foo [..]
+[FINISHED] test [unoptimized + debuginfo] target(s) in [..]
+",
+            triple = target
+        ))
+        .run();
+
+    if !cross_compile::can_run_on_host() {
+        return;
+    }
+
+    // This tests the library, but does not run the doc tests.
+    p.cargo("test -Z unstable-options -Z bindeps -v --target")
+        .arg(&target)
+        .masquerade_as_nightly_cargo()
+        .with_stderr(&format!(
+            "\
+[FRESH] bar v0.5.0 ([CWD]/bar)
+[COMPILING] foo v0.0.1 ([CWD])
+[RUNNING] `rustc --crate-name foo [..]--test[..]
+[FINISHED] test [unoptimized + debuginfo] target(s) in [..]
+[RUNNING] `[CWD]/target/{triple}/debug/deps/foo-[..][EXE]`
+",
+            triple = target
+        ))
+        .run();
+}
+
 #[cargo_test]
 fn build_script_deps_adopts_target_platform_if_target_equals_target() {
     if cross_compile::disabled() {
@@ -810,7 +1021,11 @@ fn build_script_deps_adopts_target_platform_if_target_equals_target() {
             "#,
         )
         .file("src/lib.rs", "")
-        .file("build.rs", "fn main() {}")
+        .file("build.rs", r#"
+                fn main() {
+                    let bar: std::path::PathBuf = std::env::var("CARGO_BIN_FILE_BAR").expect("CARGO_BIN_FILE_BAR").into();
+                    assert!(&bar.is_file()); 
+                }"#)
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
         .file("bar/src/main.rs", "fn main() {}")
         .file("bar/src/lib.rs", "pub fn doit() {}")
@@ -837,6 +1052,58 @@ fn build_script_deps_adopts_target_platform_if_target_equals_target() {
             "[RUNNING] `rustc --crate-name foo [..]--target {} [..]",
             alternate_target
         ))
+        .run();
+}
+
+#[cargo_test]
+fn profile_override_basic() {
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.1"
+                authors = []
+
+                [build-dependencies]
+                bar = { path = "bar", artifact = "bin" }
+                
+                [dependencies]
+                bar = { path = "bar", artifact = "bin" }
+                
+                [profile.dev.build-override]
+                opt-level = 1
+
+                [profile.dev]
+                opt-level = 3
+            "#,
+        )
+        .file("build.rs", "fn main() {}")
+        .file("src/lib.rs", "")
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file("bar/src/main.rs", "fn main() {}")
+        .file("bar/src/lib.rs", "pub fn bar() {}")
+        .build();
+
+    p.cargo("build -v -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_stderr_contains(
+            "[RUNNING] `rustc --crate-name build_script_build [..] -C opt-level=1 [..]`",
+        )
+        .with_stderr_contains(
+            "[RUNNING] `rustc --crate-name bar bar/src/main.rs [..] -C opt-level=3 [..]`",
+        )
+        .with_stderr_contains(
+            "[RUNNING] `rustc --crate-name bar bar/src/main.rs [..] -C opt-level=1 [..]`",
+        )
+        .with_stderr_contains(
+            "[RUNNING] `rustc --crate-name bar bar/src/lib.rs [..] -C opt-level=1 [..]`",
+        )
+        .with_stderr_contains(
+            "[RUNNING] `rustc --crate-name bar bar/src/lib.rs [..] -C opt-level=3 [..]`",
+        )
+        .with_stderr_contains("[RUNNING] `rustc --crate-name foo [..] -C opt-level=3 [..]`")
         .run();
 }
 

@@ -760,11 +760,12 @@ impl<'cfg> RustcTargetData<'cfg> {
                     .default_kind()
                     .into_iter()
                     .chain(p.manifest().forced_kind())
-                    .into_iter()
-                    .chain(p.manifest().dependencies().iter().filter_map(|d| {
-                        d.artifact()
-                            .and_then(|a| a.target().and_then(|t| t.to_compile_kind()))
-                    }))
+                    .chain(
+                        p.manifest()
+                            .dependencies()
+                            .iter()
+                            .filter_map(|d| d.artifact()?.target()?.to_compile_kind()),
+                    )
             }));
         for kind in all_kinds {
             if let CompileKind::Target(target) = kind {

@@ -300,7 +300,7 @@ unable to verify that `{0}` is the same as when the lockfile was generated
         from: PackageId,
         to: PackageId,
         to_target: &Target,
-    ) -> CargoResult<(String, Option<InternedString>)> {
+    ) -> CargoResult<(InternedString, Option<InternedString>)> {
         let empty_set: HashSet<Dependency> = HashSet::new();
         let deps = if from == to {
             &empty_set
@@ -308,23 +308,22 @@ unable to verify that `{0}` is the same as when the lockfile was generated
             self.dependencies_listed(from, to)
         };
 
-        let crate_name = to_target.crate_name();
-        let mut names = deps.iter().map(|d| {
+        let target_crate_name = || (to_target.crate_name(), None);
+        let mut name_pairs = deps.iter().map(|d| {
             d.explicit_name_in_toml()
-                .map(|s| s.as_str().replace("-", "_"))
-                .unwrap_or_else(|| crate_name.clone())
+                .map(|s| (s.as_str().replace("-", "_"), Some(s)))
+                .unwrap_or_else(target_crate_name)
         });
-        let name = names.next().unwrap_or_else(|| crate_name.clone());
-        for n in names {
+        let (extern_crate_name, dep_name) = name_pairs.next().unwrap_or_else(target_crate_name);
+        for (n, _) in name_pairs {
             anyhow::ensure!(
-                n == name,
+                n == extern_crate_name,
                 "the crate `{}` depends on crate `{}` multiple times with different names",
                 from,
                 to,
             );
         }
-        let dep_name = deps.iter().filter_map(|d| d.explicit_name_in_toml()).next();
-        Ok((name, dep_name))
+        Ok((extern_crate_name.into(), dep_name))
     }
 
     fn dependencies_listed(&self, from: PackageId, to: PackageId) -> &HashSet<Dependency> {

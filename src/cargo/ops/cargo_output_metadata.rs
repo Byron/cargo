@@ -1,5 +1,5 @@
 use crate::core::compiler::{CompileKind, RustcTargetData};
-use crate::core::dependency::DepKind;
+use crate::core::dependency::{ArtifactKind, ArtifactTarget, DepKind};
 use crate::core::package::SerializedPackage;
 use crate::core::resolver::{features::CliFeatures, HasDevUnits, Resolve};
 use crate::core::{Dependency, Package, PackageId, Workspace};
@@ -81,7 +81,7 @@ struct MetadataResolveNode {
 
 #[derive(Serialize)]
 struct Dep {
-    name: String,
+    name: InternedString,
     pkg: PackageId,
     dep_kinds: Vec<DepKindInfo>,
 }
@@ -90,6 +90,13 @@ struct Dep {
 struct DepKindInfo {
     kind: DepKind,
     target: Option<Platform>,
+    extern_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bin_name: Option<InternedString>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    artifact: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    compile_target: Option<InternedString>,
 }
 
 impl From<&Dependency> for DepKindInfo {
@@ -97,6 +104,10 @@ impl From<&Dependency> for DepKindInfo {
         DepKindInfo {
             kind: dep.kind(),
             target: dep.platform().cloned(),
+            extern_name: dep.name_in_toml().replace('-', "_").into(),
+            bin_name: None,
+            artifact: None,
+            compile_target: None,
         }
     }
 }
@@ -206,21 +217,35 @@ fn build_resolve_graph_r(
             }
         })
         .filter_map(|(dep_id, deps)| {
-            let mut dep_kinds: Vec<_> = deps.iter().map(DepKindInfo::from).collect();
-            dep_kinds.sort();
-            package_map
-                .get(&dep_id)
-                .and_then(|pkg| pkg.targets().iter().find(|t| t.is_lib()))
-                .and_then(|lib_target| {
-                    resolve
-                        .extern_crate_name_and_dep_name(pkg_id, dep_id, lib_target)
-                        .map(|(ext_crate_name, _)| ext_crate_name)
-                        .ok()
-                })
-                .map(|name| Dep {
-                    name,
-                    pkg: normalize_id(dep_id),
-                    dep_kinds,
+            let dep_pkg = package_map.get(&dep_id);
+            dep_pkg
+                .and_then(
+                    |dep_pkg| match dep_pkg.targets().iter().find(|t| t.is_lib()) {
+                        Some(lib_target) => resolve
+                            .extern_crate_name_and_dep_name(pkg_id, dep_id, lib_target)
+                            .map(|(ext_crate_name, _)| ext_crate_name)
+                            .ok(),
+                        None => {
+                            // No traditional library is present which excludes bin-only artifacts.
+                            // If one is present, we emulate the naming that would happen in `extern_crate_name_…()`.
+                            deps.iter().find_map(|d| {
+                                d.artifact()
+                                    .map(|_| d.name_in_toml().replace('-', "_").into())
+                            })
+                        }
+                    },
+                )
+                .map(|name| {
+                    let mut dep_kinds: Vec<_> = deps
+                        .iter()
+                        .flat_map(|dep| single_dep_kind_or_spread_artifact_kinds(dep_pkg, dep))
+                        .collect();
+                    dep_kinds.sort();
+                    Dep {
+                        name,
+                        pkg: normalize_id(dep_id),
+                        dep_kinds,
+                    }
                 })
         })
         .collect();
@@ -243,4 +268,67 @@ fn build_resolve_graph_r(
             requested_kinds,
         );
     }
+}
+
+fn single_dep_kind_or_spread_artifact_kinds(
+    dep_pkg: Option<&Package>,
+    dep: &Dependency,
+) -> Vec<DepKindInfo> {
+    fn fix_extern_name(dki: &mut DepKindInfo, bin_name: &str) {
+        dki.extern_name = bin_name.replace('-', "_").into();
+    }
+    dep.artifact()
+        .map(|artifact| {
+            let mut has_all_binaries = false;
+            let compile_target = artifact.target().map(|target| match target {
+                ArtifactTarget::BuildDependencyAssumeTarget => "target".into(),
+                ArtifactTarget::Force(target) => target.rustc_target().into(),
+            });
+            let mut dep_kinds: Vec<_> = artifact
+                .kinds()
+                .iter()
+                .filter_map(|kind| {
+                    let mut dki = DepKindInfo::from(dep);
+                    dki.artifact = Some(
+                        match kind {
+                            ArtifactKind::Staticlib => "staticlib",
+                            ArtifactKind::Cdylib => "cdylib",
+                            ArtifactKind::AllBinaries => {
+                                // handled in second pass
+                                has_all_binaries = true;
+                                return None;
+                            }
+                            ArtifactKind::SelectedBinary(name) => {
+                                dki.bin_name = Some(*name);
+                                fix_extern_name(&mut dki, name);
+                                "bin"
+                            }
+                        }
+                        .into(),
+                    );
+                    dki.compile_target = compile_target;
+                    Some(dki)
+                })
+                .collect();
+            if let Some(dep_pkg) = has_all_binaries.then(|| dep_pkg).flatten() {
+                // Note that we silently ignore the binaries missed here if dep_pkg is None, which apparently can happen.
+                // If some warnings should one day be printed for less surprising behaviour, also consider adding a warning to the
+                // ignored error further above (see `….ok()`).
+                dep_kinds.extend(dep_pkg.targets().iter().filter(|t| t.is_bin()).map(
+                    |bin_target| {
+                        let mut dki = DepKindInfo::from(dep);
+                        dki.artifact = "bin".into();
+                        dki.bin_name = Some(bin_target.name().into());
+                        fix_extern_name(&mut dki, bin_target.name());
+                        dki.compile_target = compile_target;
+                        dki
+                    },
+                ));
+            };
+            if artifact.is_lib() {
+                dep_kinds.push(DepKindInfo::from(dep))
+            }
+            dep_kinds
+        })
+        .unwrap_or_else(|| vec![DepKindInfo::from(dep)])
 }

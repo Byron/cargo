@@ -3222,7 +3222,8 @@ fn metadata_master_consistency() {
                         "dep_kinds": [
                           {
                             "kind": null,
-                            "target": null
+                            "target": null,
+                            "extern_name": "bar"
                           }
                         ]
                       }

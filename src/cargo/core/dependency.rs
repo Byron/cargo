@@ -3,6 +3,7 @@ use log::trace;
 use semver::VersionReq;
 use serde::ser;
 use serde::Serialize;
+use std::borrow::Cow;
 use std::fmt;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -62,6 +63,8 @@ struct SerializedDependency<'a> {
     optional: bool,
     uses_default_features: bool,
     features: &'a [InternedString],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    artifact: Option<&'a Artifact>,
     target: Option<&'a Platform>,
     /// The registry URL this dependency is from.
     /// If None, then it comes from the default registry (crates.io).
@@ -90,6 +93,7 @@ impl ser::Serialize for Dependency {
             rename: self.explicit_name_in_toml().map(|s| s.as_str()),
             registry: registry_id.as_ref().map(|sid| sid.url().as_str()),
             path: self.source_id().local_path(),
+            artifact: self.artifact(),
         }
         .serialize(s)
     }
@@ -438,6 +442,30 @@ pub struct Artifact {
     target: Option<ArtifactTarget>,
 }
 
+#[derive(Serialize)]
+pub struct SerializedArtifact<'a> {
+    kinds: &'a [ArtifactKind],
+    lib: bool,
+    target: Option<&'a str>,
+}
+
+impl ser::Serialize for Artifact {
+    fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: ser::Serializer,
+    {
+        SerializedArtifact {
+            kinds: self.kinds(),
+            lib: self.is_lib,
+            target: self.target.as_ref().map(|t| match t {
+                ArtifactTarget::BuildDependencyAssumeTarget => "target",
+                ArtifactTarget::Force(target) => target.rustc_target(),
+            }),
+        }
+        .serialize(s)
+    }
+}
+
 impl Artifact {
     pub(crate) fn parse(
         artifacts: &StringOrVec,
@@ -478,21 +506,21 @@ pub enum ArtifactTarget {
     BuildDependencyAssumeTarget,
     /// Then name of the platform triple, like `x86_64-apple-darwin`, that this artifact will be always be build for, no matter
     /// if it is a build, normal or dev dependency.
-    Force(CompileKind),
+    Force(CompileTarget),
 }
 
 impl ArtifactTarget {
     pub fn parse(target: &str) -> CargoResult<ArtifactTarget> {
         Ok(match target {
             "target" => ArtifactTarget::BuildDependencyAssumeTarget,
-            name => ArtifactTarget::Force(CompileKind::Target(CompileTarget::new(name)?)),
+            name => ArtifactTarget::Force(CompileTarget::new(name)?),
         })
     }
 
     pub fn to_compile_kind(&self) -> Option<CompileKind> {
         match self {
             ArtifactTarget::BuildDependencyAssumeTarget => None,
-            ArtifactTarget::Force(kind) => Some(*kind),
+            ArtifactTarget::Force(target) => Some(CompileKind::Target(*target)),
         }
     }
 }
@@ -505,6 +533,21 @@ pub enum ArtifactKind {
     SelectedBinary(InternedString),
     Cdylib,
     Staticlib,
+}
+
+impl ser::Serialize for ArtifactKind {
+    fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: ser::Serializer,
+    {
+        let out: Cow<'_, str> = match *self {
+            ArtifactKind::AllBinaries => "bin".into(),
+            ArtifactKind::Staticlib => "staticlib".into(),
+            ArtifactKind::Cdylib => "cdylib".into(),
+            ArtifactKind::SelectedBinary(name) => format!("bin:{}", name.as_str()).into(),
+        };
+        out.serialize(s)
+    }
 }
 
 impl fmt::Display for ArtifactKind {
