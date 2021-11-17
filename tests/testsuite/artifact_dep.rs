@@ -974,6 +974,8 @@ fn no_cross_doctests_works_with_artifacts() {
 [COMPILING] foo v0.0.1 ([CWD])
 [RUNNING] `rustc --crate-name foo [..]
 [FINISHED] test [unoptimized + debuginfo] target(s) in [..]
+[NOTE] skipping doctests [..]
+See https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#doctest-xcompile for more information.
 ",
             triple = target
         ))
@@ -1056,6 +1058,7 @@ fn build_script_deps_adopts_target_platform_if_target_equals_target() {
 }
 
 #[cargo_test]
+#[cfg_attr(target_env = "msvc", ignore)] // TODO(ST): rename bar (dependency) to something else and un-ignore this with RFC-3176
 fn profile_override_basic() {
     let p = project()
         .file(

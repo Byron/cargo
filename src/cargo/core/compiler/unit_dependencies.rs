@@ -151,7 +151,7 @@ fn attach_std_deps(
         if !unit.kind.is_host() && !unit.mode.is_run_custom_build() {
             deps.extend(std_roots[&unit.kind].iter().map(|unit| UnitDep {
                 unit: unit.clone(),
-                unit_for: UnitFor::new_normal(),
+                unit_for: UnitFor::new_normal(unit.kind),
                 extern_crate_name: unit.pkg.name(),
                 dep_name: None,
                 // TODO: Does this `public` make sense?
@@ -182,46 +182,35 @@ fn deps_of_roots(roots: &[Unit], state: &mut State<'_, '_>) -> CargoResult<()> {
         // cleared, and avoid building the lib thrice (once with `panic`, once
         // without, once for `--test`). In particular, the lib included for
         // Doc tests and examples are `Build` mode here.
+        let root_compile_kind = unit.kind;
         let unit_for = if unit.mode.is_any_test() || state.global_mode.is_rustc_test() {
             if unit.target.proc_macro() {
                 // Special-case for proc-macros, which are forced to for-host
                 // since they need to link with the proc_macro crate.
-                UnitFor::new_host_test(state.config)
+                UnitFor::new_host_test(state.config, root_compile_kind)
             } else {
-                UnitFor::new_test(state.config)
+                UnitFor::new_test(state.config, root_compile_kind)
             }
         } else if unit.target.is_custom_build() {
             // This normally doesn't happen, except `clean` aggressively
             // generates all units.
-            UnitFor::new_host(false)
+            UnitFor::new_host(false, root_compile_kind)
         } else if unit.target.proc_macro() {
-            UnitFor::new_host(true)
+            UnitFor::new_host(true, root_compile_kind)
         } else if unit.target.for_host() {
             // Plugin should never have panic set.
-            UnitFor::new_compiler()
+            UnitFor::new_compiler(root_compile_kind)
         } else {
-            UnitFor::new_normal()
+            UnitFor::new_normal(root_compile_kind)
         };
-        deps_of(unit, unit.kind, state, unit_for)?;
+        deps_of(unit, state, unit_for)?;
     }
 
     Ok(())
 }
 
 /// Compute the dependencies of a single unit.
-///
-/// About `root_unit_compile_kind`:
-/// The compile kind of the root unit for which artifact dependencies are built.
-/// This is required particularly for the `target = "target"` setting of artifact dependencies
-/// which mean to inherit the `--target` specified on the command-line. However, this is a multi-value
-/// argument and root units are already created to reflect one unit per --target. Thus we have to build
-/// one artifact with the correct target for each of these trees.
-fn deps_of(
-    unit: &Unit,
-    root_unit_compile_kind: CompileKind,
-    state: &mut State<'_, '_>,
-    unit_for: UnitFor,
-) -> CargoResult<()> {
+fn deps_of(unit: &Unit, state: &mut State<'_, '_>, unit_for: UnitFor) -> CargoResult<()> {
     // Currently the `unit_dependencies` map does not include `unit_for`. This should
     // be safe for now. `TestDependency` only exists to clear the `panic`
     // flag, and you'll never ask for a `unit` with `panic` set as a
@@ -229,17 +218,12 @@ fn deps_of(
     // requested unit's settings are the same as `Any`, `CustomBuild` can't
     // affect anything else in the hierarchy.
     if !state.unit_dependencies.contains_key(unit) {
-        let unit_deps = compute_deps(unit, root_unit_compile_kind, state, unit_for)?;
+        let unit_deps = compute_deps(unit, state, unit_for)?;
         state
             .unit_dependencies
             .insert(unit.clone(), unit_deps.clone());
         for unit_dep in unit_deps {
-            deps_of(
-                &unit_dep.unit,
-                root_unit_compile_kind,
-                state,
-                unit_dep.unit_for,
-            )?;
+            deps_of(&unit_dep.unit, state, unit_dep.unit_for)?;
         }
     }
     Ok(())
@@ -251,15 +235,14 @@ fn deps_of(
 /// is the profile type that should be used for dependencies of the unit.
 fn compute_deps(
     unit: &Unit,
-    root_unit_compile_kind: CompileKind,
     state: &mut State<'_, '_>,
     unit_for: UnitFor,
 ) -> CargoResult<Vec<UnitDep>> {
     if unit.mode.is_run_custom_build() {
-        return compute_deps_custom_build(unit, root_unit_compile_kind, unit_for, state);
+        return compute_deps_custom_build(unit, unit_for, state);
     } else if unit.mode.is_doc() {
         // Note: this does not include doc test.
-        return compute_deps_doc(unit, root_unit_compile_kind, state, unit_for);
+        return compute_deps_doc(unit, state, unit_for);
     }
 
     let id = unit.pkg.package_id();
@@ -305,7 +288,7 @@ fn compute_deps(
             None => continue,
         };
         let mode = check_or_build_mode(unit.mode, lib);
-        let dep_unit_for = unit_for.with_dependency(unit, lib);
+        let dep_unit_for = unit_for.with_dependency(unit, lib, unit_for.root_compile_kind());
 
         let start = ret.len();
         if state.config.cli_unstable().dual_proc_macros && lib.proc_macro() && !unit.kind.is_host()
@@ -407,7 +390,7 @@ fn compute_deps(
                         unit,
                         &unit.pkg,
                         t,
-                        UnitFor::new_normal(),
+                        UnitFor::new_normal(unit_for.root_compile_kind()),
                         unit.kind.for_target(t),
                         CompileMode::Build,
                         /*artifact*/ false,
@@ -481,7 +464,6 @@ fn calc_artifact_deps(
 /// the returned set of units must all be run before `unit` is run.
 fn compute_deps_custom_build(
     unit: &Unit,
-    root_unit_compile_kind: CompileKind,
     unit_for: UnitFor,
     state: &State<'_, '_>,
 ) -> CargoResult<Vec<UnitDep>> {
@@ -498,7 +480,10 @@ fn compute_deps_custom_build(
     // All dependencies of this unit should use profiles for custom builds.
     // If this is a build script of a proc macro, make sure it uses host
     // features.
-    let script_unit_for = UnitFor::new_host(unit_for.is_for_host_features());
+    let script_unit_for = UnitFor::new_host(
+        unit_for.is_for_host_features(),
+        unit_for.root_compile_kind(),
+    );
     // When not overridden, then the dependencies to run a build script are:
     //
     // 1. Compiling the build script itself.
@@ -529,7 +514,7 @@ fn compute_deps_custom_build(
     } else {
         let mut artifact_units: Vec<_> = build_artifact_requirements_to_units(
             unit,
-            root_unit_compile_kind,
+            unit_for.root_compile_kind(),
             artifact_build_deps,
             state,
         )?;
@@ -546,8 +531,9 @@ fn build_artifact_requirements_to_units(
 ) -> CargoResult<Vec<UnitDep>> {
     let mut ret = Vec::new();
     // So, this really wants to be true for build dependencies, otherwise resolver = "2" will fail.
+    // It means that the host features will be separated from normal features, thus won't be unified with them.
     let host_features = true;
-    let unit_for = UnitFor::new_host(host_features);
+    let unit_for = UnitFor::new_host(host_features, root_unit_compile_target);
     for (dep_pkg_id, deps) in artifact_deps {
         let artifact_pkg = state.get(dep_pkg_id);
         for build_dep in deps.iter().filter(|d| d.is_build()) {
@@ -664,7 +650,6 @@ fn match_artifacts_kind_with_targets<'a>(
 /// Returns the dependencies necessary to document a package.
 fn compute_deps_doc(
     unit: &Unit,
-    root_unit_compile_kind: CompileKind,
     state: &mut State<'_, '_>,
     unit_for: UnitFor,
 ) -> CargoResult<Vec<UnitDep>> {
@@ -688,7 +673,7 @@ fn compute_deps_doc(
         // Rustdoc only needs rmeta files for regular dependencies.
         // However, for plugins/proc macros, deps should be built like normal.
         let mode = check_or_build_mode(unit.mode, lib);
-        let dep_unit_for = unit_for.with_dependency(unit, lib);
+        let dep_unit_for = unit_for.with_dependency(unit, lib, unit_for.root_compile_kind());
         let lib_unit_dep = new_unit_dep(
             state,
             unit,
@@ -732,7 +717,7 @@ fn compute_deps_doc(
             .iter()
             .find(|t| t.is_linkable() && t.documented())
         {
-            let dep_unit_for = unit_for.with_dependency(unit, lib);
+            let dep_unit_for = unit_for.with_dependency(unit, lib, unit_for.root_compile_kind());
             let lib_doc_unit = new_unit_dep(
                 state,
                 unit,
@@ -751,8 +736,11 @@ fn compute_deps_doc(
     if state.ws.is_member(&unit.pkg) {
         for scrape_unit in state.scrape_units.iter() {
             // This needs to match the FeaturesFor used in cargo_compile::generate_targets.
-            let unit_for = UnitFor::new_host(scrape_unit.target.proc_macro());
-            deps_of(scrape_unit, root_unit_compile_kind, state, unit_for)?;
+            let unit_for = UnitFor::new_host(
+                scrape_unit.target.proc_macro(),
+                unit_for.root_compile_kind(),
+            );
+            deps_of(scrape_unit, state, unit_for)?;
             ret.push(new_unit_dep(
                 state,
                 scrape_unit,
@@ -780,7 +768,7 @@ fn maybe_lib(
         .find(|t| t.is_linkable())
         .map(|t| {
             let mode = check_or_build_mode(unit.mode, t);
-            let dep_unit_for = unit_for.with_dependency(unit, t);
+            let dep_unit_for = unit_for.with_dependency(unit, t, unit_for.root_compile_kind());
             new_unit_dep(
                 state,
                 unit,
@@ -840,7 +828,10 @@ fn dep_build_script(
             // compiled twice. I believe it is not feasible to only build it
             // once because it would break a large number of scripts (they
             // would think they have the wrong set of features enabled).
-            let script_unit_for = UnitFor::new_host(unit_for.is_for_host_features());
+            let script_unit_for = UnitFor::new_host(
+                unit_for.is_for_host_features(),
+                unit_for.root_compile_kind(),
+            );
             new_unit_dep_with_profile(
                 state,
                 unit,

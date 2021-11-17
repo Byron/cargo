@@ -153,7 +153,6 @@ pub fn generate_std_roots(
             .iter()
             .find(|t| t.is_lib())
             .expect("std has a lib");
-        let unit_for = UnitFor::new_normal();
         // I don't think we need to bother with Check here, the difference
         // in time is minimal, and the difference in caching is
         // significant.
@@ -162,6 +161,7 @@ pub fn generate_std_roots(
 
         for kind in kinds {
             let list = ret.entry(*kind).or_insert_with(Vec::new);
+            let unit_for = UnitFor::new_normal(*kind);
             let profile = profiles.get_profile(
                 pkg.package_id(),
                 /*is_member*/ false,

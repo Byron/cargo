@@ -331,7 +331,7 @@ impl Profiles {
             (self.requested_profile, None)
         };
         let maker = self.get_profile_maker(profile_name).unwrap();
-        let mut profile = maker.get_profile(Some(pkg_id), is_member, unit_for);
+        let mut profile = maker.get_profile(Some(pkg_id), is_member, unit_for.is_for_host());
 
         // Dealing with `panic=abort` and `panic=unwind` requires some special
         // treatment. Be sure to process all the various options here.
@@ -342,7 +342,9 @@ impl Profiles {
                 if let Some(inherits) = inherits {
                     // TODO: Fixme, broken with named profiles.
                     let maker = self.get_profile_maker(inherits).unwrap();
-                    profile.panic = maker.get_profile(Some(pkg_id), is_member, unit_for).panic;
+                    profile.panic = maker
+                        .get_profile(Some(pkg_id), is_member, unit_for.is_for_host())
+                        .panic;
                 }
             }
         }
@@ -410,7 +412,7 @@ impl Profiles {
         };
 
         let maker = self.get_profile_maker(profile_name).unwrap();
-        maker.get_profile(None, true, UnitFor::new_normal())
+        maker.get_profile(None, /*is_member*/ true, /*is_for_host*/ false)
     }
 
     /// Gets the directory name for a profile, like `debug` or `release`.
@@ -498,7 +500,7 @@ impl ProfileMaker {
         &self,
         pkg_id: Option<PackageId>,
         is_member: bool,
-        unit_for: UnitFor,
+        is_for_host: bool,
     ) -> Profile {
         let mut profile = self.default.clone();
 
@@ -510,7 +512,7 @@ impl ProfileMaker {
 
         // Next start overriding those settings. First comes build dependencies
         // which default to opt-level 0...
-        if unit_for.is_for_host() {
+        if is_for_host {
             // For-host units are things like procedural macros, build scripts, and
             // their dependencies. For these units most projects simply want them
             // to compile quickly and the runtime doesn't matter too much since
@@ -526,7 +528,7 @@ impl ProfileMaker {
         // profiles, such as `[profile.release.build-override]` or
         // `[profile.release.package.foo]`
         if let Some(toml) = &self.toml {
-            merge_toml_overrides(pkg_id, is_member, unit_for, &mut profile, toml);
+            merge_toml_overrides(pkg_id, is_member, is_for_host, &mut profile, toml);
         }
         profile
     }
@@ -536,11 +538,11 @@ impl ProfileMaker {
 fn merge_toml_overrides(
     pkg_id: Option<PackageId>,
     is_member: bool,
-    unit_for: UnitFor,
+    is_for_host: bool,
     profile: &mut Profile,
     toml: &TomlProfile,
 ) {
-    if unit_for.is_for_host() {
+    if is_for_host {
         if let Some(build_override) = &toml.build_override {
             merge_profile(profile, build_override);
         }
@@ -932,6 +934,14 @@ pub struct UnitFor {
     /// handle test/benches inheriting from dev/release, as well as forcing
     /// `for_host` units to always unwind.
     panic_setting: PanicSetting,
+
+    /// The compile kind of the root unit for which artifact dependencies are built.
+    /// This is required particularly for the `target = "target"` setting of artifact dependencies
+    /// which mean to inherit the `--target` specified on the command-line. However, that is a multi-value
+    /// argument and root units are already created to reflect one unit per --target. Thus we have to build
+    /// one artifact with the correct target for each of these trees.
+    /// Note that this will always be set as we don't initially know if there are artifacts that make use of it.
+    root_compile_kind: CompileKind,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
@@ -952,11 +962,12 @@ enum PanicSetting {
 impl UnitFor {
     /// A unit for a normal target/dependency (i.e., not custom build,
     /// proc macro/plugin, or test/bench).
-    pub fn new_normal() -> UnitFor {
+    pub fn new_normal(root_compile_kind: CompileKind) -> UnitFor {
         UnitFor {
             host: false,
             host_features: false,
             panic_setting: PanicSetting::ReadProfile,
+            root_compile_kind,
         }
     }
 
@@ -966,18 +977,19 @@ impl UnitFor {
     /// dependency or proc-macro (something that requires being built "on the
     /// host"). Build scripts for non-host units should use `false` because
     /// they want to use the features of the package they are running for.
-    pub fn new_host(host_features: bool) -> UnitFor {
+    pub fn new_host(host_features: bool, root_compile_kind: CompileKind) -> UnitFor {
         UnitFor {
             host: true,
             host_features,
             // Force build scripts to always use `panic=unwind` for now to
             // maximally share dependencies with procedural macros.
             panic_setting: PanicSetting::AlwaysUnwind,
+            root_compile_kind,
         }
     }
 
     /// A unit for a compiler plugin or their dependencies.
-    pub fn new_compiler() -> UnitFor {
+    pub fn new_compiler(root_compile_kind: CompileKind) -> UnitFor {
         UnitFor {
             host: false,
             // The feature resolver doesn't know which dependencies are
@@ -988,6 +1000,7 @@ impl UnitFor {
             // not abort the process but instead end with a reasonable error
             // message that involves catching the panic in the compiler.
             panic_setting: PanicSetting::AlwaysUnwind,
+            root_compile_kind,
         }
     }
 
@@ -997,7 +1010,7 @@ impl UnitFor {
     /// whether `panic=abort` is supported for tests. Historical versions of
     /// rustc did not support this, but newer versions do with an unstable
     /// compiler flag.
-    pub fn new_test(config: &Config) -> UnitFor {
+    pub fn new_test(config: &Config, root_compile_kind: CompileKind) -> UnitFor {
         UnitFor {
             host: false,
             host_features: false,
@@ -1010,14 +1023,15 @@ impl UnitFor {
             } else {
                 PanicSetting::AlwaysUnwind
             },
+            root_compile_kind,
         }
     }
 
     /// This is a special case for unit tests of a proc-macro.
     ///
     /// Proc-macro unit tests are forced to be run on the host.
-    pub fn new_host_test(config: &Config) -> UnitFor {
-        let mut unit_for = UnitFor::new_test(config);
+    pub fn new_host_test(config: &Config, root_compile_kind: CompileKind) -> UnitFor {
+        let mut unit_for = UnitFor::new_test(config, root_compile_kind);
         unit_for.host = true;
         unit_for.host_features = true;
         unit_for
@@ -1029,7 +1043,12 @@ impl UnitFor {
     /// transition in a sticky fashion. As the dependency graph is being
     /// built, once those flags are set, they stay set for the duration of
     /// that portion of tree.
-    pub fn with_dependency(self, parent: &Unit, dep_target: &Target) -> UnitFor {
+    pub fn with_dependency(
+        self,
+        parent: &Unit,
+        dep_target: &Target,
+        root_compile_kind: CompileKind,
+    ) -> UnitFor {
         // A build script or proc-macro transitions this to being built for the host.
         let dep_for_host = dep_target.for_host();
         // This is where feature decoupling of host versus target happens.
@@ -1054,6 +1073,7 @@ impl UnitFor {
             host: self.host || dep_for_host,
             host_features,
             panic_setting,
+            root_compile_kind,
         }
     }
 
@@ -1072,47 +1092,12 @@ impl UnitFor {
         self.panic_setting
     }
 
-    /// All possible values, used by `clean`.
-    pub fn all_values() -> &'static [UnitFor] {
-        static ALL: &[UnitFor] = &[
-            UnitFor {
-                host: false,
-                host_features: false,
-                panic_setting: PanicSetting::ReadProfile,
-            },
-            UnitFor {
-                host: true,
-                host_features: false,
-                panic_setting: PanicSetting::AlwaysUnwind,
-            },
-            UnitFor {
-                host: false,
-                host_features: false,
-                panic_setting: PanicSetting::AlwaysUnwind,
-            },
-            UnitFor {
-                host: false,
-                host_features: false,
-                panic_setting: PanicSetting::Inherit,
-            },
-            // host_features=true must always have host=true
-            // `Inherit` is not used in build dependencies.
-            UnitFor {
-                host: true,
-                host_features: true,
-                panic_setting: PanicSetting::ReadProfile,
-            },
-            UnitFor {
-                host: true,
-                host_features: true,
-                panic_setting: PanicSetting::AlwaysUnwind,
-            },
-        ];
-        ALL
-    }
-
     pub(crate) fn map_to_features_for(&self) -> FeaturesFor {
         FeaturesFor::from_for_host(self.is_for_host_features())
+    }
+
+    pub(crate) fn root_compile_kind(&self) -> CompileKind {
+        self.root_compile_kind
     }
 }
 
