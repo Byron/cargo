@@ -1783,7 +1783,7 @@ fn assert_artifact_executable_output(
     {
         assert_eq!(
             p.glob(format!(
-                "target/{}/artifact/{}-*/bin/{}-*.d",
+                "target/{}/deps/artifact/{}-*/bin/{}-*.d",
                 target_name, dep_name, bin_name
             ))
             .count(),
@@ -1795,7 +1795,7 @@ fn assert_artifact_executable_output(
     {
         assert_eq!(
             p.glob(format!(
-                "target/{}/artifact/{}-*/bin/{}{}",
+                "target/{}/deps/artifact/{}-*/bin/{}{}",
                 target_name,
                 dep_name,
                 bin_name,

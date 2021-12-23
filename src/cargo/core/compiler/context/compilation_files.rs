@@ -291,7 +291,7 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
     }
 
     /// Returns the directory where a compiled artifacts are stored.
-    /// `/path/to/target/{debug,release}/artifact/PKG-HASH`
+    /// `/path/to/target/{debug,release}/deps/artifact/PKG-HASH`
     fn artifact_dir(&self, unit: &Unit) -> PathBuf {
         assert!(self.metas.contains_key(unit));
         assert!(unit.artifact);
