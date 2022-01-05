@@ -251,6 +251,103 @@ fn disallow_artifact_and_no_artifact_dep_to_same_package_within_the_same_dep_cat
 }
 
 #[cargo_test]
+fn features_are_unified_among_lib_and_bin_dep_of_same_target() {
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [project]
+                name = "foo"
+                version = "0.0.1"
+                authors = []
+
+                [dependencies.d1]
+                path = "d1"
+                features = ["d1f1"]
+                artifact = "bin"
+                lib = true
+                
+                [dependencies.d2]
+                path = "d2"
+                features = ["d2f2"]
+            "#,
+        )
+        .file(
+            "src/main.rs",
+            r#"
+                fn main() {
+                    d1::f1();
+                    d1::f2();
+                    d2::f1();
+                    d2::f2();
+                }
+            "#,
+        )
+        .file(
+            "d1/Cargo.toml",
+            r#"
+                [package]
+                name = "d1"
+                version = "0.0.1"
+                authors = []
+
+                [features]
+                d1f1 = ["d2"]
+
+                [dependencies.d2]
+                path = "../d2"
+                features = ["d2f1"]
+                optional = true
+            "#,
+        )
+        .file("d1/src/main.rs", "fn main() {}")
+        .file(
+            "d1/src/lib.rs",
+            r#"
+            #[cfg(feature = "d2")]
+            extern crate d2;
+            #[cfg(feature = "d1f1")]
+            pub use d2::f1;
+            #[cfg(feature = "d1f1")]
+            pub use d2::f2;
+        "#,
+        )
+        .file(
+            "d2/Cargo.toml",
+            r#"
+                [package]
+                name = "d2"
+                version = "0.0.1"
+                authors = []
+
+                [features]
+                d2f1 = []
+                d2f2 = []
+            "#,
+        )
+        .file(
+            "d2/src/lib.rs",
+            r#"
+                #[cfg(feature = "d2f1")] pub fn f1() {}
+                #[cfg(feature = "d2f2")] pub fn f2() {}
+            "#,
+        )
+        .build();
+
+    p.cargo("build -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_stderr(
+            "\
+[COMPILING] d2 v0.0.1 ([CWD]/d2)
+[COMPILING] d1 v0.0.1 ([CWD]/d1)
+[COMPILING] foo v0.0.1 ([CWD])
+[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
+",
+        )
+        .run();
+}
+
+#[cargo_test]
 fn build_script_with_bin_artifacts() {
     let p = project()
         .file(
