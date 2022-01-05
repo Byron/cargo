@@ -13,7 +13,7 @@ pub fn set_env(
     cmd: &mut ProcessBuilder,
 ) -> CargoResult<Option<HashMap<Metadata, HashSet<(String, PathBuf)>>>> {
     let mut ret = HashMap::new();
-    for unit_dep in dependencies.iter().filter(|d| d.unit.artifact) {
+    for unit_dep in dependencies.iter().filter(|d| d.unit.artifact.is_true()) {
         let mut set = HashSet::new();
         for artifact_path in cx
             .outputs(&unit_dep.unit)?

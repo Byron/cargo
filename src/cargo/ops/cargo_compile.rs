@@ -26,7 +26,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use crate::core::compiler::unit_dependencies::build_unit_dependencies;
+use crate::core::compiler::unit_dependencies::{build_unit_dependencies, IsArtifact};
 use crate::core::compiler::unit_graph::{self, UnitDep, UnitGraph};
 use crate::core::compiler::{standard_lib, TargetInfo};
 use crate::core::compiler::{BuildConfig, BuildContext, Compilation, Context};
@@ -1099,7 +1099,7 @@ fn generate_targets(
                 features.clone(),
                 /*is_std*/ false,
                 /*dep_hash*/ 0,
-                /*artifact*/ false,
+                IsArtifact::No,
             );
             units.insert(unit);
         }

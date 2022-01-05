@@ -202,7 +202,7 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
             self.build_script_dir(unit)
         } else if unit.target.is_example() {
             self.layout(unit.kind).examples().to_path_buf()
-        } else if unit.artifact {
+        } else if unit.artifact.is_true() {
             self.artifact_dir(unit).into()
         } else {
             self.deps_dir(unit).to_path_buf()
@@ -294,7 +294,7 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
     /// `/path/to/target/{debug,release}/deps/artifact/PKG-HASH`
     fn artifact_dir(&self, unit: &Unit) -> PathBuf {
         assert!(self.metas.contains_key(unit));
-        assert!(unit.artifact);
+        assert!(unit.artifact.is_true());
         let dir = self.pkg_dir(unit);
         let kind = match unit.target.kind() {
             TargetKind::Bin => "bin",
@@ -391,7 +391,7 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
         //   This one is a little questionable for rlibs (see #6131), but is
         //   historically how Cargo has operated. This is primarily useful to
         //   give the user access to staticlibs and cdylibs.
-        if unit.artifact
+        if unit.artifact.is_true()
             || (!unit.target.is_bin()
                 && !unit.target.is_custom_build()
                 && file_type.crate_type != Some(CrateType::Dylib)

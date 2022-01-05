@@ -262,7 +262,10 @@ impl<'a, 'cfg> Context<'a, 'cfg> {
                         .unit_deps(unit)
                         .iter()
                         .filter_map(|dep| {
-                            dep.unit.artifact.then(|| self.files().metadata(&dep.unit))
+                            dep.unit
+                                .artifact
+                                .is_true()
+                                .then(|| self.files().metadata(&dep.unit))
                         })
                         .collect(),
                     args,

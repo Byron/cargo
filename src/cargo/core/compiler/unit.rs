@@ -1,4 +1,4 @@
-use crate::core::compiler::{CompileKind, CompileMode, CrateType};
+use crate::core::compiler::{unit_dependencies::IsArtifact, CompileKind, CompileMode, CrateType};
 use crate::core::manifest::{Target, TargetKind};
 use crate::core::{profiles::Profile, Package};
 use crate::util::hex::short_hash;
@@ -57,7 +57,7 @@ pub struct UnitInner {
     pub features: Vec<InternedString>,
     // if `true`, the dependency is an artifact dependency, requiring special handling when calculating output directories,
     // linkage and environment variables provided to builds.
-    pub artifact: bool,
+    pub artifact: IsArtifact,
     /// Whether this is a standard library unit.
     pub is_std: bool,
     /// A hash of all dependencies of this unit.
@@ -138,7 +138,7 @@ impl fmt::Debug for Unit {
             .field("kind", &self.kind)
             .field("mode", &self.mode)
             .field("features", &self.features)
-            .field("artifact", &self.artifact)
+            .field("artifact", &self.artifact.is_true())
             .field("is_std", &self.is_std)
             .field("dep_hash", &self.dep_hash)
             .finish()
@@ -183,7 +183,7 @@ impl UnitInterner {
         features: Vec<InternedString>,
         is_std: bool,
         dep_hash: u64,
-        artifact: bool,
+        artifact: IsArtifact,
     ) -> Unit {
         let target = match (is_std, target.kind()) {
             // This is a horrible hack to support build-std. `libstd` declares

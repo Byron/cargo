@@ -56,6 +56,19 @@ struct State<'a, 'cfg> {
     dev_dependency_edges: HashSet<(Unit, Unit)>,
 }
 
+/// A boolean-like to indicate if a `Unit` is an artifact or not.
+#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum IsArtifact {
+    Yes,
+    No,
+}
+
+impl IsArtifact {
+    pub fn is_true(&self) -> bool {
+        matches!(self, IsArtifact::Yes)
+    }
+}
+
 pub fn build_unit_dependencies<'a, 'cfg>(
     ws: &'a Workspace<'cfg>,
     package_set: &'a PackageSet<'cfg>,
@@ -301,7 +314,7 @@ fn compute_deps(
                 dep_unit_for,
                 unit.kind,
                 mode,
-                /*artifact*/ false,
+                IsArtifact::No,
             )?;
             ret.push(unit_dep);
             let unit_dep = new_unit_dep(
@@ -312,7 +325,7 @@ fn compute_deps(
                 dep_unit_for,
                 CompileKind::Host,
                 mode,
-                /*artifact*/ false,
+                IsArtifact::No,
             )?;
             ret.push(unit_dep);
         } else {
@@ -324,7 +337,7 @@ fn compute_deps(
                 dep_unit_for,
                 unit.kind.for_target(lib),
                 mode,
-                /*artifact*/ false,
+                IsArtifact::No,
             )?;
             ret.push(unit_dep);
         }
@@ -393,7 +406,7 @@ fn compute_deps(
                         UnitFor::new_normal(unit_for.root_compile_kind()),
                         unit.kind.for_target(t),
                         CompileMode::Build,
-                        /*artifact*/ false,
+                        IsArtifact::No,
                     )
                 })
                 .collect::<CargoResult<Vec<UnitDep>>>()?,
@@ -502,7 +515,7 @@ fn compute_deps_custom_build(
         // Build scripts always compiled for the host.
         CompileKind::Host,
         CompileMode::Build,
-        /*artifact*/ false,
+        IsArtifact::No,
     )?;
 
     let artifact_build_deps = state.deps_filtered(unit, script_unit_for, &|dep| {
@@ -573,39 +586,35 @@ fn artifact_targets_to_unit_deps(
             // kinds in an single invocation for the sole reason that each artifact kind has its own output directory,
             // something we can't easily teach rustc for now.
             match target.kind() {
-                TargetKind::Lib(kinds) => {
-                    Box::new(
-                        kinds
-                            .iter()
-                            .filter(|tk| matches!(tk, CrateType::Cdylib | CrateType::Staticlib))
-                            .map(|target_kind| {
-                                new_unit_dep(
-                                    state,
-                                    parent,
-                                    artifact_pkg,
-                                    target
-                                        .clone()
-                                        .set_kind(TargetKind::Lib(vec![target_kind.clone()])),
-                                    parent_unit_for,
-                                    compile_kind,
-                                    CompileMode::Build,
-                                    /*artifact*/ true,
-                                )
-                            }),
-                    ) as Box<dyn Iterator<Item = _>>
-                }
-                _ => {
-                    Box::new(std::iter::once(new_unit_dep(
-                        state,
-                        parent,
-                        artifact_pkg,
-                        target,
-                        parent_unit_for,
-                        compile_kind,
-                        CompileMode::Build,
-                        /*artifact*/ true,
-                    )))
-                }
+                TargetKind::Lib(kinds) => Box::new(
+                    kinds
+                        .iter()
+                        .filter(|tk| matches!(tk, CrateType::Cdylib | CrateType::Staticlib))
+                        .map(|target_kind| {
+                            new_unit_dep(
+                                state,
+                                parent,
+                                artifact_pkg,
+                                target
+                                    .clone()
+                                    .set_kind(TargetKind::Lib(vec![target_kind.clone()])),
+                                parent_unit_for,
+                                compile_kind,
+                                CompileMode::Build,
+                                IsArtifact::Yes,
+                            )
+                        }),
+                ) as Box<dyn Iterator<Item = _>>,
+                _ => Box::new(std::iter::once(new_unit_dep(
+                    state,
+                    parent,
+                    artifact_pkg,
+                    target,
+                    parent_unit_for,
+                    compile_kind,
+                    CompileMode::Build,
+                    IsArtifact::Yes,
+                ))),
             }
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -682,7 +691,7 @@ fn compute_deps_doc(
             dep_unit_for,
             unit.kind.for_target(lib),
             mode,
-            /*artifact*/ false,
+            IsArtifact::No,
         )?;
         ret.push(lib_unit_dep);
         if lib.documented() {
@@ -696,7 +705,7 @@ fn compute_deps_doc(
                     dep_unit_for,
                     unit.kind.for_target(lib),
                     unit.mode,
-                    /*artifact*/ false,
+                    IsArtifact::No,
                 )?;
                 ret.push(doc_unit_dep);
             }
@@ -726,7 +735,7 @@ fn compute_deps_doc(
                 dep_unit_for,
                 unit.kind.for_target(lib),
                 unit.mode,
-                false, /* artifact */
+                IsArtifact::No,
             )?;
             ret.push(lib_doc_unit);
         }
@@ -749,7 +758,7 @@ fn compute_deps_doc(
                 unit_for,
                 scrape_unit.kind,
                 scrape_unit.mode,
-                /*artifact*/ false,
+                IsArtifact::No,
             )?);
         }
     }
@@ -777,7 +786,7 @@ fn maybe_lib(
                 dep_unit_for,
                 unit.kind.for_target(t),
                 mode,
-                /*artifact*/ false,
+                IsArtifact::No,
             )
         })
         .transpose()
@@ -841,7 +850,7 @@ fn dep_build_script(
                 unit.kind,
                 CompileMode::RunCustomBuild,
                 profile,
-                /*artifact*/ false,
+                IsArtifact::No,
             )
         })
         .transpose()
@@ -874,7 +883,7 @@ fn new_unit_dep(
     unit_for: UnitFor,
     kind: CompileKind,
     mode: CompileMode,
-    artifact: bool,
+    artifact: IsArtifact,
 ) -> CargoResult<UnitDep> {
     let is_local = pkg.package_id().source_id().is_path() && !state.is_std;
     let profile = state.profiles.get_profile(
@@ -899,7 +908,7 @@ fn new_unit_dep_with_profile(
     kind: CompileKind,
     mode: CompileMode,
     profile: Profile,
-    artifact: bool,
+    artifact: IsArtifact,
 ) -> CargoResult<UnitDep> {
     let (extern_crate_name, dep_name) = state.resolve().extern_crate_name_and_dep_name(
         parent.pkg.package_id(),

@@ -262,7 +262,7 @@ fn rustc(cx: &mut Context<'_, '_>, unit: &Unit, exec: &Arc<dyn Executor>) -> Car
     let fingerprint_dir = cx.files().fingerprint_dir(unit);
     let script_metadata = cx.find_build_script_metadata(unit);
     let is_local = unit.is_local();
-    let is_artifact = unit.artifact;
+    let artifact = unit.artifact;
 
     return Ok(Work::new(move |state| {
         // Only at runtime have we discovered what the extra -L and -l
@@ -275,7 +275,7 @@ fn rustc(cx: &mut Context<'_, '_>, unit: &Unit, exec: &Arc<dyn Executor>) -> Car
 
         // Artifacts are in a different location than typical units, hence
         // we must assure the crate- and target-dependent directory is present.
-        if is_artifact {
+        if artifact.is_true() {
             paths::create_dir_all(&root)?;
         }
 
@@ -1114,10 +1114,9 @@ fn build_deps_args(
         .iter()
         .any(|dep| !dep.unit.mode.is_doc() && dep.unit.target.is_linkable())
     {
-        if let Some(dep) = deps
-            .iter()
-            .find(|dep| !dep.unit.mode.is_doc() && dep.unit.target.is_lib() && !dep.unit.artifact)
-        {
+        if let Some(dep) = deps.iter().find(|dep| {
+            !dep.unit.mode.is_doc() && dep.unit.target.is_lib() && !dep.unit.artifact.is_true()
+        }) {
             bcx.config.shell().warn(format!(
                 "The package `{}` \
                  provides no linkable target. The compiler might raise an error while compiling \

@@ -1,5 +1,6 @@
 //! Code for building the standard library.
 
+use crate::core::compiler::unit_dependencies::IsArtifact;
 use crate::core::compiler::UnitInterner;
 use crate::core::compiler::{CompileKind, CompileMode, RustcTargetData, Unit};
 use crate::core::profiles::{Profiles, UnitFor};
@@ -179,7 +180,7 @@ pub fn generate_std_roots(
                 features.clone(),
                 /*is_std*/ true,
                 /*dep_hash*/ 0,
-                /*artifact*/ false,
+                IsArtifact::No,
             ));
         }
     }
