@@ -426,7 +426,7 @@ fn package_lib(dep_pkg: &Package, has_artifact: bool, artifact_lib: bool) -> Opt
     })
 }
 
-/// Adds build requests for for artifact dependencies of `unit`.
+/// Adds build requests for artifact dependencies of `unit`.
 fn calc_artifact_deps(
     unit: &Unit,
     unit_for: UnitFor,

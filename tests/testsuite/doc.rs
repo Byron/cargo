@@ -2634,7 +2634,7 @@ fn doc_lib_false() {
                 doc = false
             "#,
         )
-        .file("bar/src/lib.rs", "")
+        .file("bar/src/lib.rs", "pub fn bar() {}")
         .build();
 
     p.cargo("doc")
