@@ -1,4 +1,5 @@
-use crate::core::compiler::{CompileKind, CompileMode, Unit};
+use crate::core::compiler::{CompileKind, CompileMode, CompileTarget, Unit};
+use crate::core::dependency::Artifact;
 use crate::core::resolver::features::FeaturesFor;
 use crate::core::{Feature, PackageId, PackageIdSpec, Resolve, Shell, Target, Workspace};
 use crate::util::interning::InternedString;
@@ -881,6 +882,9 @@ impl fmt::Display for Strip {
 
 /// Flags used in creating `Unit`s to indicate the purpose for the target, and
 /// to ensure the target's dependencies have the correct settings.
+///
+/// This means these are passed down from the root of the dependency tree to apply
+/// to most child dependencies.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct UnitFor {
     /// A target for `build.rs` or any of its dependencies, or a proc-macro or
@@ -942,6 +946,13 @@ pub struct UnitFor {
     /// one artifact with the correct target for each of these trees.
     /// Note that this will always be set as we don't initially know if there are artifacts that make use of it.
     root_compile_kind: CompileKind,
+
+    /// This is only set for artifact dependencies which have their `<target-triple>|target` set.
+    /// If so, this information is used as part of the key for resolving their features, allowing for target-dependent feature resolution
+    /// within the entire dependency tree.
+    /// Note that this target corresponds to the target used to build the units in that dependency tree, too, but this copy of it is
+    /// specifically used for feature lookup.
+    artifact_target_for_features: Option<CompileTarget>,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
@@ -968,6 +979,7 @@ impl UnitFor {
             host_features: false,
             panic_setting: PanicSetting::ReadProfile,
             root_compile_kind,
+            artifact_target_for_features: None,
         }
     }
 
@@ -985,6 +997,7 @@ impl UnitFor {
             // maximally share dependencies with procedural macros.
             panic_setting: PanicSetting::AlwaysUnwind,
             root_compile_kind,
+            artifact_target_for_features: None,
         }
     }
 
@@ -1001,6 +1014,7 @@ impl UnitFor {
             // message that involves catching the panic in the compiler.
             panic_setting: PanicSetting::AlwaysUnwind,
             root_compile_kind,
+            artifact_target_for_features: None,
         }
     }
 
@@ -1024,6 +1038,7 @@ impl UnitFor {
                 PanicSetting::AlwaysUnwind
             },
             root_compile_kind,
+            artifact_target_for_features: None,
         }
     }
 
@@ -1074,7 +1089,26 @@ impl UnitFor {
             host_features,
             panic_setting,
             root_compile_kind,
+            artifact_target_for_features: self.artifact_target_for_features,
         }
+    }
+
+    /// Set the artifact compile target for use in features using the given `artifact`.
+    pub(crate) fn with_artifact_features(mut self, artifact: &Artifact) -> UnitFor {
+        self.artifact_target_for_features = artifact.target().and_then(|t| t.to_compile_target());
+        self
+    }
+
+    /// Set the artifact compile target as determined by a resolved compile target. This is used if `target = "target"`.
+    pub(crate) fn with_artifact_features_from_resolved_compile_kind(
+        mut self,
+        kind: Option<CompileKind>,
+    ) -> UnitFor {
+        self.artifact_target_for_features = kind.and_then(|kind| match kind {
+            CompileKind::Host => None,
+            CompileKind::Target(triple) => Some(triple),
+        });
+        self
     }
 
     /// Returns `true` if this unit is for a build script or any of its
@@ -1092,8 +1126,19 @@ impl UnitFor {
         self.panic_setting
     }
 
-    pub(crate) fn map_to_features_for(&self) -> FeaturesFor {
-        FeaturesFor::from_for_host(self.is_for_host_features())
+    /// We might contain a parent artifact compile kind for features already, but will gladly accept the one of this dependency
+    /// as an override as it defines how the artifact is built.
+    /// If we are an artifact but don't specify a `target`, we assume the default compile kind that is suitable in this situation.
+    pub(crate) fn map_to_features_for(&self, dep_artifact: Option<&Artifact>) -> FeaturesFor {
+        FeaturesFor::from_for_host_or_artifact_target(
+            self.is_for_host_features(),
+            match dep_artifact {
+                Some(artifact) => artifact
+                    .target()
+                    .and_then(|t| t.to_resolved_compile_target(self.root_compile_kind)),
+                None => self.artifact_target_for_features,
+            },
+        )
     }
 
     pub(crate) fn root_compile_kind(&self) -> CompileKind {

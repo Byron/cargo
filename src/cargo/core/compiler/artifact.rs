@@ -3,7 +3,7 @@ use crate::core::compiler::{Context, CrateType, FileFlavor, Metadata, Unit};
 use crate::core::TargetKind;
 use crate::CargoResult;
 use cargo_util::ProcessBuilder;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Adjust `cmd` to contain artifact environment variables and return all set key/value pairs for later use.
@@ -11,10 +11,10 @@ pub fn set_env(
     cx: &Context<'_, '_>,
     dependencies: &[UnitDep],
     cmd: &mut ProcessBuilder,
-) -> CargoResult<Option<HashMap<Metadata, HashSet<(String, PathBuf)>>>> {
+) -> CargoResult<Option<HashMap<Metadata, HashMap<String, PathBuf>>>> {
     let mut ret = HashMap::new();
     for unit_dep in dependencies.iter().filter(|d| d.unit.artifact.is_true()) {
-        let mut set = HashSet::new();
+        let mut env = HashMap::new();
         for artifact_path in cx
             .outputs(&unit_dep.unit)?
             .iter()
@@ -27,7 +27,7 @@ pub fn set_env(
             let var = format!("CARGO_{}_DIR_{}", artifact_type_upper, dep_name_upper);
             let path = artifact_path.parent().expect("parent dir for artifacts");
             cmd.env(&var, path);
-            set.insert((var, path.to_owned()));
+            env.insert(var, path.to_owned());
 
             let var = format!(
                 "CARGO_{}_FILE_{}_{}",
@@ -36,16 +36,16 @@ pub fn set_env(
                 unit_dep.unit.target.name()
             );
             cmd.env(&var, artifact_path);
-            set.insert((var, artifact_path.to_owned()));
+            env.insert(var, artifact_path.to_owned());
 
             if unit_dep.unit.target.name() == dep_name.as_str() {
                 let var = format!("CARGO_{}_FILE_{}", artifact_type_upper, dep_name_upper,);
                 cmd.env(&var, artifact_path);
-                set.insert((var, artifact_path.to_owned()));
+                env.insert(var, artifact_path.to_owned());
             }
         }
-        if !set.is_empty() {
-            ret.insert(cx.files().metadata(&unit_dep.unit), set);
+        if !env.is_empty() {
+            ret.insert(cx.files().metadata(&unit_dep.unit), env);
         }
     }
     Ok((!ret.is_empty()).then(|| ret))

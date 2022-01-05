@@ -3848,3 +3848,236 @@ fn cargo_metadata_non_utf8() {
         .with_status(101)
         .run();
 }
+
+// TODO: Consider using this test instead of the version without the 'bindep' suffix or merge them because they should be pretty much the same.
+#[cargo_test]
+fn workspace_metadata_with_dependencies_no_deps_bindep() {
+    let p = project()
+        // NOTE that 'artifact' isn't mentioned in the workspace here, yet it shows up as member.
+        .file(
+            "Cargo.toml",
+            r#"
+                [workspace]
+                members = ["bar", "baz"]
+            "#,
+        )
+        .file(
+            "bar/Cargo.toml",
+            r#"
+                [package]
+
+                name = "bar"
+                version = "0.5.0"
+                authors = ["wycats@example.com"]
+                
+                [dependencies]
+                baz = { path = "../baz/" }
+                baz-renamed = { path = "../baz/" }
+                artifact = { path = "../artifact/", artifact = "bin" }
+           "#,
+        )
+        .file("bar/src/lib.rs", "")
+        .file("baz/Cargo.toml", &basic_lib_manifest("baz"))
+        .file("baz/src/lib.rs", "")
+        .file("artifact/Cargo.toml", &basic_bin_manifest("artifact"))
+        .file("artifact/src/main.rs", "fn main() {}")
+        .build();
+
+    p.cargo("metadata --no-deps -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_json(
+            r#"
+            {
+              "metadata": null,
+              "packages": [
+                {
+                  "authors": [
+                    "wycats@example.com"
+                  ],
+                  "categories": [],
+                  "default_run": null,
+                  "dependencies": [
+                    {
+                      "artifact": {
+                        "kinds": [
+                          "bin"
+                        ],
+                        "lib": false,
+                        "target": null
+                      },
+                      "features": [],
+                      "kind": null,
+                      "name": "artifact",
+                      "optional": false,
+                      "path": "[..]/foo/artifact",
+                      "registry": null,
+                      "rename": null,
+                      "req": "*",
+                      "source": null,
+                      "target": null,
+                      "uses_default_features": true
+                    },
+                    {
+                      "features": [],
+                      "kind": null,
+                      "name": "baz",
+                      "optional": false,
+                      "path": "[..]/foo/baz",
+                      "registry": null,
+                      "rename": null,
+                      "req": "*",
+                      "source": null,
+                      "target": null,
+                      "uses_default_features": true
+                    },
+                    {
+                      "features": [],
+                      "kind": null,
+                      "name": "baz-renamed",
+                      "optional": false,
+                      "path": "[..]/foo/baz",
+                      "registry": null,
+                      "rename": null,
+                      "req": "*",
+                      "source": null,
+                      "target": null,
+                      "uses_default_features": true
+                    }
+                  ],
+                  "description": null,
+                  "documentation": null,
+                  "edition": "2015",
+                  "features": {},
+                  "homepage": null,
+                  "id": "bar 0.5.0 (path+file://[..]/foo/bar)",
+                  "keywords": [],
+                  "license": null,
+                  "license_file": null,
+                  "links": null,
+                  "manifest_path": "[..]/foo/bar/Cargo.toml",
+                  "metadata": null,
+                  "name": "bar",
+                  "publish": null,
+                  "readme": null,
+                  "repository": null,
+                  "rust_version": null,
+                  "source": null,
+                  "targets": [
+                    {
+                      "crate_types": [
+                        "lib"
+                      ],
+                      "doc": true,
+                      "doctest": true,
+                      "edition": "2015",
+                      "kind": [
+                        "lib"
+                      ],
+                      "name": "bar",
+                      "src_path": "[..]/foo/bar/src/lib.rs",
+                      "test": true
+                    }
+                  ],
+                  "version": "0.5.0"
+                },
+                {
+                  "authors": [
+                    "wycats@example.com"
+                  ],
+                  "categories": [],
+                  "default_run": null,
+                  "dependencies": [],
+                  "description": null,
+                  "documentation": null,
+                  "edition": "2015",
+                  "features": {},
+                  "homepage": null,
+                  "id": "artifact 0.5.0 (path+file://[..]/foo/artifact)",
+                  "keywords": [],
+                  "license": null,
+                  "license_file": null,
+                  "links": null,
+                  "manifest_path": "[..]/foo/artifact/Cargo.toml",
+                  "metadata": null,
+                  "name": "artifact",
+                  "publish": null,
+                  "readme": null,
+                  "repository": null,
+                  "rust_version": null,
+                  "source": null,
+                  "targets": [
+                    {
+                      "crate_types": [
+                        "bin"
+                      ],
+                      "doc": true,
+                      "doctest": false,
+                      "edition": "2015",
+                      "kind": [
+                        "bin"
+                      ],
+                      "name": "artifact",
+                      "src_path": "[..]/foo/artifact/src/main.rs",
+                      "test": true
+                    }
+                  ],
+                  "version": "0.5.0"
+                },
+                {
+                  "authors": [
+                    "wycats@example.com"
+                  ],
+                  "categories": [],
+                  "default_run": null,
+                  "dependencies": [],
+                  "description": null,
+                  "documentation": null,
+                  "edition": "2015",
+                  "features": {},
+                  "homepage": null,
+                  "id": "baz 0.5.0 (path+file://[..]/foo/baz)",
+                  "keywords": [],
+                  "license": null,
+                  "license_file": null,
+                  "links": null,
+                  "manifest_path": "[..]/foo/baz/Cargo.toml",
+                  "metadata": null,
+                  "name": "baz",
+                  "publish": null,
+                  "readme": null,
+                  "repository": null,
+                  "rust_version": null,
+                  "source": null,
+                  "targets": [
+                    {
+                      "crate_types": [
+                        "lib"
+                      ],
+                      "doc": true,
+                      "doctest": true,
+                      "edition": "2015",
+                      "kind": [
+                        "lib"
+                      ],
+                      "name": "baz",
+                      "src_path": "[..]/foo/baz/src/lib.rs",
+                      "test": true
+                    }
+                  ],
+                  "version": "0.5.0"
+                }
+              ],
+              "resolve": null,
+              "target_directory": "[..]/foo/target",
+              "version": 1,
+              "workspace_members": [
+                "bar 0.5.0 (path+file://[..]/foo/bar)",
+                "artifact 0.5.0 (path+file://[..]/foo/artifact)",
+                "baz 0.5.0 (path+file://[..]/foo/baz)"
+              ],
+              "workspace_root": "[..]/foo"
+            }
+"#,
+        )
+        .run();
+}

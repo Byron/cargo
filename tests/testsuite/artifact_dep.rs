@@ -260,6 +260,7 @@ fn features_are_unified_among_lib_and_bin_dep_of_same_target() {
                 name = "foo"
                 version = "0.0.1"
                 authors = []
+                resolver = "2"
 
                 [dependencies.d1]
                 path = "d1"
@@ -300,16 +301,27 @@ fn features_are_unified_among_lib_and_bin_dep_of_same_target() {
                 optional = true
             "#,
         )
-        .file("d1/src/main.rs", "fn main() {}")
+        .file(
+            "d1/src/main.rs",
+            r#"fn main() {
+                #[cfg(feature = "d1f1")]
+                d2::f1();
+                
+                // Using f2 is only possible as features are unififed across the same target.
+                // Our own manifest would only enable f1, and f2 comes in because a parent crate
+                // enables the feature in its manifest.
+                #[cfg(feature = "d1f1")]
+                d2::f2();
+            }"#,
+        )
         .file(
             "d1/src/lib.rs",
             r#"
             #[cfg(feature = "d2")]
             extern crate d2;
+            /// Importing f2 here shouldn't be possible as unless features are unified.
             #[cfg(feature = "d1f1")]
-            pub use d2::f1;
-            #[cfg(feature = "d1f1")]
-            pub use d2::f2;
+            pub use d2::{f1, f2};
         "#,
         )
         .file(
@@ -343,6 +355,109 @@ fn features_are_unified_among_lib_and_bin_dep_of_same_target() {
 [COMPILING] foo v0.0.1 ([CWD])
 [FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
 ",
+        )
+        .run();
+}
+
+#[cargo_test]
+fn features_are_not_unified_among_lib_and_bin_dep_of_different_target() {
+    if cross_compile::disabled() {
+        return;
+    }
+    let target = cross_compile::alternate();
+    let p = project()
+        .file(
+            "Cargo.toml",
+            &r#"
+                [project]
+                name = "foo"
+                version = "0.0.1"
+                authors = []
+                resolver = "2"
+
+                [dependencies.d1]
+                path = "d1"
+                features = ["d1f1"]
+                artifact = "bin"
+                lib = true
+                target = "$TARGET"
+                
+                [dependencies.d2]
+                path = "d2"
+                features = ["d2f2"]
+            "#
+            .replace("$TARGET", target),
+        )
+        .file(
+            "src/main.rs",
+            r#"
+                fn main() {
+                    // the lib = true part always builds for our current target, unifying dependencies
+                    d1::d2::f1();
+                    d1::d2::f2();
+                    d2::f1();
+                    d2::f2();
+                }
+            "#,
+        )
+        .file(
+            "d1/Cargo.toml",
+            r#"
+                [package]
+                name = "d1"
+                version = "0.0.1"
+                authors = []
+
+                [features]
+                d1f1 = ["d2"]
+
+                [dependencies.d2]
+                path = "../d2"
+                features = ["d2f1"]
+                optional = true
+            "#,
+        )
+        .file("d1/src/main.rs", r#"fn main() {
+            // f1 we set ourselves
+            d2::f1();
+            // As 'main' is only compiled as part of the artifact dependency and since that is not unified
+            // if the target differs, trying to access f2 is a compile time error as the feature isn't enabled in our dependency tree.
+            d2::f2();
+        }"#)
+        .file(
+            "d1/src/lib.rs",
+            r#"
+            #[cfg(feature = "d2")]
+            extern crate d2;
+        "#,
+        )
+        .file(
+            "d2/Cargo.toml",
+            r#"
+                [package]
+                name = "d2"
+                version = "0.0.1"
+                authors = []
+
+                [features]
+                d2f1 = []
+                d2f2 = []
+            "#,
+        )
+        .file(
+            "d2/src/lib.rs",
+            r#"
+                #[cfg(feature = "d2f1")] pub fn f1() {}
+                #[cfg(feature = "d2f2")] pub fn f2() {}
+            "#,
+        )
+        .build();
+
+    p.cargo("build -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_status(101)
+        .with_stderr_contains(
+            "error[E0425]: cannot find function `f2` in crate `d2`\n --> d1/src/main.rs:6:17",
         )
         .run();
 }

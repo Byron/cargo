@@ -158,8 +158,10 @@ pub fn generate_std_roots(
         // in time is minimal, and the difference in caching is
         // significant.
         let mode = CompileMode::Build;
-        let features = std_features.activated_features(pkg.package_id(), FeaturesFor::NormalOrDev);
-
+        let features = std_features.activated_features(
+            pkg.package_id(),
+            FeaturesFor::NormalOrDevOrArtifactTarget(None),
+        );
         for kind in kinds {
             let list = ret.entry(*kind).or_insert_with(Vec::new);
             let unit_for = UnitFor::new_normal(*kind);
