@@ -966,17 +966,13 @@ fn no_cross_doctests_works_with_artifacts() {
     p.cargo("test -Z unstable-options -Z bindeps -v --doc --target")
         .arg(&target)
         .masquerade_as_nightly_cargo()
-        .with_stderr(format!(
-            "\
-[COMPILING] bar v0.5.0 ([CWD]/bar)
+        .with_stderr_contains(format!(
+            "[COMPILING] bar v0.5.0 ([CWD]/bar)
 [RUNNING] `rustc --crate-name bar bar/src/lib.rs [..]--target {triple} [..]
 [RUNNING] `rustc --crate-name bar bar/src/main.rs [..]--target {triple} [..]
 [COMPILING] foo v0.0.1 ([CWD])
 [RUNNING] `rustc --crate-name foo [..]
-[FINISHED] test [unoptimized + debuginfo] target(s) in [..]
-[NOTE] skipping doctests [..]
-See https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#doctest-xcompile for more information.
-",
+[FINISHED] test [unoptimized + debuginfo] target(s) in [..]",
             triple = target
         ))
         .run();
@@ -989,14 +985,12 @@ See https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#doctest-xcom
     p.cargo("test -Z unstable-options -Z bindeps -v --target")
         .arg(&target)
         .masquerade_as_nightly_cargo()
-        .with_stderr(&format!(
-            "\
-[FRESH] bar v0.5.0 ([CWD]/bar)
+        .with_stderr_contains(&format!(
+            "[FRESH] bar v0.5.0 ([CWD]/bar)
 [COMPILING] foo v0.0.1 ([CWD])
 [RUNNING] `rustc --crate-name foo [..]--test[..]
 [FINISHED] test [unoptimized + debuginfo] target(s) in [..]
-[RUNNING] `[CWD]/target/{triple}/debug/deps/foo-[..][EXE]`
-",
+[RUNNING] `[CWD]/target/{triple}/debug/deps/foo-[..][EXE]`",
             triple = target
         ))
         .run();
