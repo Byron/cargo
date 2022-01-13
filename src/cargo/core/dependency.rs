@@ -496,6 +496,9 @@ impl Artifact {
     pub(crate) fn target(&self) -> Option<ArtifactTarget> {
         self.target
     }
+    pub(crate) fn clear_target(&mut self) {
+        self.target = None;
+    }
 }
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Ord, PartialOrd, Debug)]
