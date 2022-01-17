@@ -1981,10 +1981,7 @@ impl<P: ResolveToPath> DetailedTomlDependency<P> {
                 }
                 dep.set_artifact(artifact)
             } else {
-                bail!(
-                    "`artifact = …` ignored as `-Z bindeps` is not set ({})",
-                    name_in_toml
-                );
+                bail!("`artifact = …` requires `-Z bindeps` ({})", name_in_toml);
             }
         } else if self.lib.is_some() || self.target.is_some() {
             for (is_set, specifier) in [

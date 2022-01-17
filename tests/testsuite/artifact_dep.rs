@@ -159,7 +159,7 @@ fn build_without_nightly_aborts_with_error() {
 [ERROR] failed to parse manifest at [..]
 
 Caused by:
-  `artifact = [..]` ignored as `-Z bindeps` is not set (bar)
+  `artifact = …` requires `-Z bindeps` (bar)
 ",
         )
         .run();
