@@ -133,7 +133,7 @@ fn check_with_invalid_target_triple() {
 }
 
 #[cargo_test]
-fn build_without_nightly_shows_warnings_and_ignores_them() {
+fn build_without_nightly_aborts_with_error() {
     let p = project()
         .file(
             "Cargo.toml",
@@ -153,12 +153,13 @@ fn build_without_nightly_shows_warnings_and_ignores_them() {
         .file("bar/src/lib.rs", "")
         .build();
     p.cargo("check")
+        .with_status(101)
         .with_stderr(
             "\
-[WARNING] `artifact = [..]` ignored as `-Z bindeps` is not set (bar)
-[CHECKING] bar [..]
-[CHECKING] foo [..]
-[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
+[ERROR] failed to parse manifest at [..]
+
+Caused by:
+  `artifact = [..]` ignored as `-Z bindeps` is not set (bar)
 ",
         )
         .run();
@@ -1905,7 +1906,8 @@ fn doc_lib_true() {
     assert_eq!(p.glob("target/debug/artifact/*.rlib").count(), 0);
     assert_eq!(p.glob("target/debug/deps/libbar-*.rmeta").count(), 2);
 
-    p.cargo("doc")
+    p.cargo("doc -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
         .env("CARGO_LOG", "cargo::ops::cargo_rustc::fingerprint")
         .with_stdout("")
         .run();

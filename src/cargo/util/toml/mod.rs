@@ -1981,11 +1981,10 @@ impl<P: ResolveToPath> DetailedTomlDependency<P> {
                 }
                 dep.set_artifact(artifact)
             } else {
-                let msg = format!(
+                bail!(
                     "`artifact = …` ignored as `-Z bindeps` is not set ({})",
                     name_in_toml
                 );
-                cx.warnings.push(msg);
             }
         } else if self.lib.is_some() || self.target.is_some() {
             for (is_set, specifier) in [
