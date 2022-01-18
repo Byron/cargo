@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::fmt;
@@ -203,7 +202,7 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
         } else if unit.target.is_example() {
             self.layout(unit.kind).examples().to_path_buf()
         } else if unit.artifact.is_true() {
-            self.artifact_dir(unit).into()
+            self.artifact_dir(unit)
         } else {
             self.deps_dir(unit).to_path_buf()
         }
@@ -245,8 +244,8 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
 
     /// Returns the directories where Rust crate dependencies are found for the
     /// specified unit.
-    pub fn deps_dir(&self, unit: &Unit) -> Cow<'_, Path> {
-        self.layout(unit.kind).deps().into()
+    pub fn deps_dir(&self, unit: &Unit) -> &Path {
+        self.layout(unit.kind).deps()
     }
 
     /// Directory where the fingerprint for the given unit should go.
@@ -381,7 +380,12 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
         if unit.mode != CompileMode::Build || file_type.flavor == FileFlavor::Rmeta {
             return None;
         }
-        // Only uplift non-artifacts:
+
+        // Artifact dependencies are never uplifted.
+        if unit.artifact.is_true() {
+            return None;
+        }
+
         // - Binaries: The user always wants to see these, even if they are
         //   implicitly built (for example for integration tests).
         // - dylibs: This ensures that the dynamic linker pulls in all the
@@ -391,11 +395,10 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
         //   This one is a little questionable for rlibs (see #6131), but is
         //   historically how Cargo has operated. This is primarily useful to
         //   give the user access to staticlibs and cdylibs.
-        if unit.artifact.is_true()
-            || (!unit.target.is_bin()
-                && !unit.target.is_custom_build()
-                && file_type.crate_type != Some(CrateType::Dylib)
-                && !self.roots.contains(unit))
+        if !unit.target.is_bin()
+            && !unit.target.is_custom_build()
+            && file_type.crate_type != Some(CrateType::Dylib)
+            && !self.roots.contains(unit)
         {
             return None;
         }

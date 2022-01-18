@@ -1,3 +1,6 @@
+//! Tests specific to artifact dependencies, designated using
+//! the new `dep = { artifact = "bin", … }` syntax in manifests.
+
 use cargo_test_support::compare::match_exact;
 use cargo_test_support::registry::Package;
 use cargo_test_support::{

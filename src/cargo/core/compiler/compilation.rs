@@ -203,7 +203,7 @@ impl<'cfg> Compilation<'cfg> {
         let mut cmd = self.fill_env(cmd, &unit.pkg, script_meta, unit.kind, true)?;
         if let Some(artifact_env) = unit_meta.map(|meta| {
             meta.iter()
-                .filter_map(|meta| self.artifact_env.get(&meta))
+                .filter_map(|meta| self.artifact_env.get(meta))
                 .flat_map(std::convert::identity)
         }) {
             for (var, path) in artifact_env {

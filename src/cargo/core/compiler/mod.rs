@@ -1091,7 +1091,7 @@ fn build_deps_args(
     let bcx = cx.bcx;
     cmd.arg("-L").arg(&{
         let mut deps = OsString::from("dependency=");
-        deps.push(cx.files().deps_dir(unit).as_ref());
+        deps.push(cx.files().deps_dir(unit));
         deps
     });
 
@@ -1141,8 +1141,8 @@ fn build_deps_args(
         cmd.arg(arg);
     }
 
-    if let Some(vars) = artifact::set_env(cx, deps, cmd)?
-        .and_then(|vars| cx.bcx.roots.contains(&unit).then(|| vars))
+    if let Some(vars) =
+        artifact::set_env(cx, deps, cmd)?.and_then(|vars| cx.bcx.roots.contains(unit).then(|| vars))
     {
         cx.compilation.artifact_env.extend(vars);
     }
