@@ -587,9 +587,9 @@ impl<'cfg> PackageSet<'cfg> {
                         })
                     })
                     .collect();
-                Ok::<_, anyhow::Error>((root_id, dep_pkgs))
+                (root_id, dep_pkgs)
             })
-            .collect::<Result<_, _>>()?;
+            .collect();
 
         for (pkg_id, dep_pkgs) in no_lib_pkgs {
             for dep_pkg in dep_pkgs {
