@@ -565,7 +565,7 @@ impl<'cfg> PackageSet<'cfg> {
         target_data: &RustcTargetData<'_>,
         force_all_targets: ForceAllTargets,
     ) -> CargoResult<()> {
-        let no_lib_pkgs: BTreeMap<PackageId, Vec<&Package>> = root_ids
+        let no_lib_pkgs: BTreeMap<PackageId, Vec<(&Package, &HashSet<Dependency>)>> = root_ids
             .iter()
             .map(|&root_id| {
                 let dep_pkgs_to_deps: Vec<_> = PackageSet::filter_deps(
@@ -578,26 +578,32 @@ impl<'cfg> PackageSet<'cfg> {
                 )
                 .collect();
 
-                let dep_pkgs = dep_pkgs_to_deps
-                    .iter()
-                    .filter(|(_id, deps)| deps.iter().all(|dep| dep.maybe_lib()))
-                    .filter_map(|(dep_package_id, _deps)| {
-                        self.get_one(*dep_package_id).ok().and_then(|dep_pkg| {
-                            (!dep_pkg.targets().iter().any(|t| t.is_lib())).then(|| dep_pkg)
+                let dep_pkgs_and_deps = dep_pkgs_to_deps
+                    .into_iter()
+                    .filter(|(_id, deps)| deps.iter().any(|dep| dep.maybe_lib()))
+                    .filter_map(|(dep_package_id, deps)| {
+                        self.get_one(dep_package_id).ok().and_then(|dep_pkg| {
+                            (!dep_pkg.targets().iter().any(|t| t.is_lib())).then(|| (dep_pkg, deps))
                         })
                     })
                     .collect();
-                (root_id, dep_pkgs)
+                (root_id, dep_pkgs_and_deps)
             })
             .collect();
 
         for (pkg_id, dep_pkgs) in no_lib_pkgs {
-            for dep_pkg in dep_pkgs {
-                ws.config().shell().warn(&format!(
-                    "{} ignoring invalid dependency `{}` which is missing a lib target",
-                    pkg_id,
-                    dep_pkg.name(),
-                ))?;
+            for (_dep_pkg_without_lib_target, deps) in dep_pkgs {
+                for dep in deps.iter().filter(|dep| {
+                    dep.artifact()
+                        .map(|artifact| artifact.is_lib())
+                        .unwrap_or(true)
+                }) {
+                    ws.config().shell().warn(&format!(
+                        "{} ignoring invalid dependency `{}` which is missing a lib target",
+                        pkg_id,
+                        dep.name_in_toml(),
+                    ))?;
+                }
             }
         }
         Ok(())

@@ -245,8 +245,9 @@ fn disallow_artifact_and_no_artifact_dep_to_same_package_within_the_same_dep_cat
     p.cargo("check -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_status(101)
-        .with_stderr(
-            "[ERROR] the crate `foo v0.0.0 ([CWD])` depends on crate `bar v0.5.0 ([CWD]/bar)` multiple times with different names",
+        .with_stderr("\
+[WARNING] foo v0.0.0 ([CWD]) ignoring invalid dependency `bar_stable` which is missing a lib target
+[ERROR] the crate `foo v0.0.0 ([CWD])` depends on crate `bar v0.5.0 ([CWD]/bar)` multiple times with different names",
         )
         .run();
 }
@@ -1522,11 +1523,15 @@ fn show_no_lib_warning_with_artifact_dependencies_that_have_no_lib_but_lib_true(
                 authors = []
                 resolver = "2"
                 
+                [build-dependencies]
+                bar = { path = "bar/", artifact = "bin" }
+                
                 [dependencies]
                 bar = { path = "bar/", artifact = "bin", lib = true }
             "#,
         )
         .file("src/lib.rs", "")
+        .file("src/build.rs", "fn main() {}")
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
         .file("bar/src/main.rs", "fn main() {}")
         .build();
