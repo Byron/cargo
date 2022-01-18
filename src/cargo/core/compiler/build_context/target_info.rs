@@ -1,7 +1,7 @@
 use crate::core::compiler::{
     BuildOutput, CompileKind, CompileMode, CompileTarget, Context, CrateType,
 };
-use crate::core::{Dependency, Target, TargetKind, Workspace};
+use crate::core::{Dependency, Package, Target, TargetKind, Workspace};
 use crate::util::config::{Config, StringList, TargetConfig};
 use crate::util::{CargoResult, Rustc};
 use anyhow::Context as _;
@@ -752,6 +752,13 @@ impl<'cfg> RustcTargetData<'cfg> {
         // correctly represents all the kinds that can happen. When we have
         // other ways for targets to appear at places that are not the root units,
         // we may have to revisit this.
+        fn artifact_targets(package: &Package) -> impl Iterator<Item = CompileKind> + '_ {
+            package
+                .manifest()
+                .dependencies()
+                .iter()
+                .filter_map(|d| d.artifact()?.target()?.to_compile_kind())
+        }
         let all_kinds = requested_kinds
             .iter()
             .copied()
@@ -760,12 +767,7 @@ impl<'cfg> RustcTargetData<'cfg> {
                     .default_kind()
                     .into_iter()
                     .chain(p.manifest().forced_kind())
-                    .chain(
-                        p.manifest()
-                            .dependencies()
-                            .iter()
-                            .filter_map(|d| d.artifact()?.target()?.to_compile_kind()),
-                    )
+                    .chain(artifact_targets(p))
             }));
         for kind in all_kinds {
             if let CompileKind::Target(target) = kind {

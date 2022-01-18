@@ -1384,6 +1384,51 @@ foo v0.0.0 ([CWD])
 }
 
 #[cargo_test]
+#[ignore]
+fn targets_are_picked_up_from_non_workspace_artifact_deps() {
+    if cross_compile::disabled() {
+        return;
+    }
+    let target = cross_compile::alternate();
+    Package::new("artifact", "1.0.0")
+        .file("src/main.rs", r#"fn main() {}"#)
+        .file("src/lib.rs", r#"pub fn lib() {}"#)
+        .publish();
+
+    let mut dep = registry::Dependency::new("artifact", "1.0.0");
+    Package::new("uses-artifact", "1.0.0")
+        .file(
+            "src/lib.rs",
+            r#"pub fn uses_artifact() { let _b = include_bytes!(env!("CARGO_BIN_FILE_ARTIFACT")); }"#,
+        )
+        .add_dep(dep.artifact("bin", Some(target.to_string())))
+        .publish();
+
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                
+                [dependencies]
+                uses-artifact = { version = "1.0.0" }
+            "#,
+        )
+        .file(
+            "src/lib.rs",
+            r#"pub fn foo() { uses_artifact::uses_artifact(); }"#,
+        )
+        .build();
+
+    p.cargo("build -Z unstable-options -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .run();
+}
+
+#[cargo_test]
 fn allow_dep_renames_with_multiple_versions() {
     Package::new("bar", "1.0.0")
         .file("src/main.rs", r#"fn main() {println!("1.0.0")}"#)
