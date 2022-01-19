@@ -1,12 +1,13 @@
 use crate::core::compiler::{
     BuildOutput, CompileKind, CompileMode, CompileTarget, Context, CrateType,
 };
-use crate::core::{Dependency, Package, Target, TargetKind, Workspace};
+use crate::core::{Dependency, Package, PackageId, Resolve, Target, TargetKind, Workspace};
 use crate::util::config::{Config, StringList, TargetConfig};
 use crate::util::{CargoResult, Rustc};
 use anyhow::Context as _;
 use cargo_platform::{Cfg, CfgExpr};
 use cargo_util::{paths, ProcessBuilder};
+use im_rc::HashSet;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::hash_map::{Entry, HashMap};
@@ -770,21 +771,57 @@ impl<'cfg> RustcTargetData<'cfg> {
                     .chain(artifact_targets(p))
             }));
         for kind in all_kinds {
-            if let CompileKind::Target(target) = kind {
-                if !res.target_config.contains_key(&target) {
-                    res.target_config
-                        .insert(target, res.config.target_cfg_triple(target.short_name())?);
-                }
-                if !res.target_info.contains_key(&target) {
-                    res.target_info.insert(
-                        target,
-                        TargetInfo::new(res.config, &res.requested_kinds, &res.rustc, kind)?,
-                    );
-                }
-            }
+            res.merge_compile_kind(kind)?;
         }
 
         Ok(res)
+    }
+
+    pub(crate) fn merge_artifact_targets(
+        &mut self,
+        ws: &Workspace<'_>,
+        resolve: &Resolve,
+    ) -> CargoResult<()> {
+        fn recurse_dependencies(
+            this: &mut RustcTargetData<'_>,
+            resolve: &Resolve,
+            pkg_id: PackageId,
+            seen: &mut HashSet<PackageId>,
+        ) -> CargoResult<()> {
+            if seen.insert(pkg_id).is_none() {
+                for (dep_id, deps) in resolve.deps(pkg_id) {
+                    for kind in deps
+                        .iter()
+                        .filter_map(|d| d.artifact()?.target()?.to_compile_kind())
+                    {
+                        this.merge_compile_kind(kind)?;
+                    }
+                    recurse_dependencies(this, resolve, dep_id, seen)?;
+                }
+            }
+            Ok(())
+        }
+        let mut seen = HashSet::new();
+        for member in ws.members() {
+            recurse_dependencies(self, resolve, member.package_id(), &mut seen)?;
+        }
+        Ok(())
+    }
+
+    fn merge_compile_kind(&mut self, kind: CompileKind) -> CargoResult<()> {
+        if let CompileKind::Target(target) = kind {
+            if !self.target_config.contains_key(&target) {
+                self.target_config
+                    .insert(target, self.config.target_cfg_triple(target.short_name())?);
+            }
+            if !self.target_info.contains_key(&target) {
+                self.target_info.insert(
+                    target,
+                    TargetInfo::new(self.config, &self.requested_kinds, &self.rustc, kind)?,
+                );
+            }
+        }
+        Ok(())
     }
 
     /// Returns a "short" name for the given kind, suitable for keying off

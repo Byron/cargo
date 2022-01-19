@@ -365,7 +365,7 @@ pub fn create_bcx<'a, 'cfg>(
     }
     config.validate_term_config()?;
 
-    let target_data = RustcTargetData::new(ws, &build_config.requested_kinds)?;
+    let mut target_data = RustcTargetData::new(ws, &build_config.requested_kinds)?;
 
     let all_packages = &Packages::All;
     let rustdoc_scrape_examples = &config.cli_unstable().rustdoc_scrape_examples;
@@ -397,6 +397,8 @@ pub fn create_bcx<'a, 'cfg>(
         targeted_resolve: resolve,
         resolved_features,
     } = resolve;
+
+    target_data.merge_artifact_targets(ws, &resolve)?;
 
     let std_resolve_features = if let Some(crates) = &config.cli_unstable().build_std {
         if build_config.build_plan {
