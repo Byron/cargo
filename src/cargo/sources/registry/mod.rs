@@ -172,7 +172,7 @@ use semver::Version;
 use serde::Deserialize;
 use tar::Archive;
 
-use crate::core::dependency::{DepKind, Dependency};
+use crate::core::dependency::{Artifact, DepKind, Dependency};
 use crate::core::source::MaybePackage;
 use crate::core::{Package, PackageId, Source, SourceId, Summary};
 use crate::sources::PathSource;
@@ -338,6 +338,14 @@ fn escaped_char_in_json() {
     .unwrap();
 }
 
+/// Artifact information as part of a dependency
+#[derive(Deserialize)]
+struct RegistryArtifact<'a> {
+    kinds: Vec<&'a str>,
+    lib: bool,
+    target: Option<&'a str>,
+}
+
 /// A dependency as encoded in the index JSON.
 #[derive(Deserialize)]
 struct RegistryDependency<'a> {
@@ -352,6 +360,7 @@ struct RegistryDependency<'a> {
     registry: Option<Cow<'a, str>>,
     package: Option<InternedString>,
     public: Option<bool>,
+    artifact: Option<RegistryArtifact<'a>>,
 }
 
 impl<'a> RegistryDependency<'a> {
@@ -368,6 +377,7 @@ impl<'a> RegistryDependency<'a> {
             registry,
             package,
             public,
+            artifact,
         } = self;
 
         let id = if let Some(registry) = &registry {
@@ -413,6 +423,14 @@ impl<'a> RegistryDependency<'a> {
             .set_platform(platform)
             .set_kind(kind)
             .set_public(public);
+
+        if let Some(artifact) = artifact {
+            dep.set_artifact(Artifact::parse(
+                artifact.kinds.iter(),
+                artifact.lib,
+                artifact.target,
+            )?);
+        }
 
         Ok(dep)
     }

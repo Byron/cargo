@@ -12,7 +12,6 @@ use crate::core::compiler::{CompileKind, CompileTarget};
 use crate::core::{PackageId, SourceId, Summary};
 use crate::util::errors::CargoResult;
 use crate::util::interning::InternedString;
-use crate::util::toml::StringOrVec;
 use crate::util::OptVersionReq;
 
 /// Information about a dependency requested by a Cargo manifest.
@@ -467,15 +466,14 @@ impl ser::Serialize for Artifact {
 }
 
 impl Artifact {
-    pub(crate) fn parse(
-        artifacts: &StringOrVec,
+    pub(crate) fn parse<S: AsRef<str>>(
+        artifacts: impl Iterator<Item = S>,
         is_lib: bool,
         target: Option<&str>,
     ) -> CargoResult<Self> {
         let kinds = ArtifactKind::validate(
             artifacts
-                .iter()
-                .map(|s| ArtifactKind::parse(s))
+                .map(|s| ArtifactKind::parse(s.as_ref()))
                 .collect::<Result<Vec<_>, _>>()?,
         )?;
         Ok(Artifact {

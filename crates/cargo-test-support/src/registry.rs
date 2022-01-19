@@ -327,11 +327,18 @@ pub struct Package {
 type FeatureMap = BTreeMap<String, Vec<String>>;
 
 #[derive(Clone)]
+pub struct Artifact {
+    kinds: Vec<String>,
+    lib: bool,
+    target: Option<String>,
+}
+
+#[derive(Clone)]
 pub struct Dependency {
     name: String,
     vers: String,
     kind: String,
-    artifact: Option<(String, Option<String>)>,
+    artifact: Option<Artifact>,
     target: Option<String>,
     features: Vec<String>,
     registry: Option<String>,
@@ -586,18 +593,28 @@ impl Package {
                     (true, Some("alternative")) => None,
                     _ => panic!("registry_dep currently only supports `alternative`"),
                 };
-                serde_json::json!({
+                let mut jdep = serde_json::json!({
                     "name": dep.name,
                     "req": dep.vers,
                     "features": dep.features,
                     "default_features": true,
                     "target": dep.target,
-                    "artifact": dep.artifact,
                     "optional": dep.optional,
                     "kind": dep.kind,
                     "registry": registry_url,
                     "package": dep.package,
-                })
+                });
+                if let Some(artifact) = &dep.artifact {
+                    let mut jartifact = serde_json::json!({
+                       "kinds": artifact.kinds,
+                        "lib": artifact.lib,
+                    });
+                    if let Some(target) = &artifact.target {
+                        jartifact["target"] = serde_json::json!(target);
+                    }
+                    jdep["artifact"] = jartifact;
+                }
+                jdep
             })
             .collect::<Vec<_>>();
         let cksum = {
@@ -746,9 +763,18 @@ impl Package {
             "#,
                 target, kind, dep.name, dep.vers
             ));
-            if let Some((artifact, target)) = &dep.artifact {
-                manifest.push_str(&format!("artifact = \"{}\"\n", artifact));
-                if let Some(target) = &target {
+            if let Some(artifact) = &dep.artifact {
+                manifest.push_str(&format!(
+                    "artifact = [{}]\n",
+                    artifact
+                        .kinds
+                        .iter()
+                        .map(|k| format!(r#""{}""#, k))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                ));
+                manifest.push_str(&format!("lib = {}\n", artifact.lib));
+                if let Some(target) = &artifact.target {
                     manifest.push_str(&format!("target = \"{}\"\n", target))
                 }
             }
@@ -837,7 +863,11 @@ impl Dependency {
     /// Change the artifact to be of the given kind, like "bin", or "staticlib",
     /// along with a specific target triple if provided.
     pub fn artifact(&mut self, kind: &str, target: Option<String>) -> &mut Self {
-        self.artifact = Some((kind.to_string(), target));
+        self.artifact = Some(Artifact {
+            kinds: vec![kind.to_string()],
+            lib: false,
+            target,
+        });
         self
     }
 
