@@ -1664,6 +1664,7 @@ fn check_target_equals_target_in_non_build_dependency_causes_warning() {
                 name = "foo"
                 version = "0.0.0"
                 authors = []
+                resolver = "2"
 
                 [dependencies]
                 bar = { path = "bar/", artifact = "bin", target = "target" }
@@ -1900,13 +1901,19 @@ documentation = "foo"
 license = "MIT"
 repository = "foo"
 resolver = "2"
+
 [dependencies.bar]
 version = "1.0"
 artifact = ["bin"]
 lib = true
+
 [build-dependencies.baz]
 version = "1.0"
-artifact = ["bin:a", "cdylib", "staticlib"]
+artifact = [
+    "bin:a",
+    "cdylib",
+    "staticlib",
+]
 target = "target""#,
                 cargo::core::package::MANIFEST_PREAMBLE
             ),
