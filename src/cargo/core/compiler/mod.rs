@@ -625,8 +625,8 @@ fn prepare_rustc(
 
 fn rustdoc(cx: &mut Context<'_, '_>, unit: &Unit) -> CargoResult<Work> {
     let bcx = cx.bcx;
-    // script_metadata is not needed here, it is only for tests. The same is true for artifact metadata.
-    let mut rustdoc = cx.compilation.rustdoc_process(unit, None, None)?;
+    // script_metadata is not needed here, it is only for tests.
+    let mut rustdoc = cx.compilation.rustdoc_process(unit, None)?;
     rustdoc.inherit_jobserver(&cx.jobserver);
     let crate_name = unit.target.crate_name();
     rustdoc.arg("--crate-name").arg(&crate_name);
@@ -1140,10 +1140,8 @@ fn build_deps_args(
         cmd.arg(arg);
     }
 
-    if let Some(vars) =
-        artifact::set_env(cx, deps, cmd)?.and_then(|vars| cx.bcx.roots.contains(unit).then(|| vars))
-    {
-        cx.compilation.artifact_env.extend(vars);
+    for (var, env) in artifact::get_env(cx, deps)? {
+        cmd.env(&var, env);
     }
 
     // This will only be set if we're already using a feature

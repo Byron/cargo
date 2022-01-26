@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use crate::core::compiler::compilation::{self, UnitOutput};
-use crate::core::compiler::{self, Unit};
+use crate::core::compiler::{self, artifact, Unit};
 use crate::core::PackageId;
 use crate::util::errors::CargoResult;
 use crate::util::profile;
@@ -258,20 +258,11 @@ impl<'a, 'cfg> Context<'a, 'cfg> {
 
                 self.compilation.to_doc_test.push(compilation::Doctest {
                     unit: unit.clone(),
-                    artifact_meta: self
-                        .unit_deps(unit)
-                        .iter()
-                        .filter_map(|dep| {
-                            dep.unit
-                                .artifact
-                                .is_true()
-                                .then(|| self.files().metadata(&dep.unit))
-                        })
-                        .collect(),
                     args,
                     unstable_opts,
                     linker: self.bcx.linker(unit.kind),
                     script_meta,
+                    env: artifact::get_env(&self, self.unit_deps(unit))?,
                 });
             }
 

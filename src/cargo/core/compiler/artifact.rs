@@ -1,21 +1,18 @@
 /// Generate artifact information from unit dependencies for configuring the compiler environment.
 use crate::core::compiler::unit_graph::UnitDep;
-use crate::core::compiler::{Context, CrateType, FileFlavor, Metadata, Unit};
+use crate::core::compiler::{Context, CrateType, FileFlavor, Unit};
 use crate::core::TargetKind;
 use crate::CargoResult;
-use cargo_util::ProcessBuilder;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::ffi::OsString;
 
-/// Adjust `cmd` to contain artifact environment variables and return all set key/value pairs for later use.
-pub fn set_env(
+/// Return all environment variables for the given unit-dependencies if artifacts are present.
+pub fn get_env(
     cx: &Context<'_, '_>,
     dependencies: &[UnitDep],
-    cmd: &mut ProcessBuilder,
-) -> CargoResult<Option<HashMap<Metadata, HashMap<String, PathBuf>>>> {
-    let mut ret = HashMap::new();
+) -> CargoResult<HashMap<String, OsString>> {
+    let mut env = HashMap::new();
     for unit_dep in dependencies.iter().filter(|d| d.unit.artifact.is_true()) {
-        let mut env = HashMap::new();
         for artifact_path in cx
             .outputs(&unit_dep.unit)?
             .iter()
@@ -27,8 +24,7 @@ pub fn set_env(
 
             let var = format!("CARGO_{}_DIR_{}", artifact_type_upper, dep_name_upper);
             let path = artifact_path.parent().expect("parent dir for artifacts");
-            cmd.env(&var, path);
-            env.insert(var, path.to_owned());
+            env.insert(var, path.to_owned().into());
 
             let var = format!(
                 "CARGO_{}_FILE_{}_{}",
@@ -36,20 +32,15 @@ pub fn set_env(
                 dep_name_upper,
                 unit_dep.unit.target.name()
             );
-            cmd.env(&var, artifact_path);
-            env.insert(var, artifact_path.to_owned());
+            env.insert(var, artifact_path.to_owned().into());
 
             if unit_dep.unit.target.name() == dep_name.as_str() {
                 let var = format!("CARGO_{}_FILE_{}", artifact_type_upper, dep_name_upper,);
-                cmd.env(&var, artifact_path);
-                env.insert(var, artifact_path.to_owned());
+                env.insert(var, artifact_path.to_owned().into());
             }
         }
-        if !env.is_empty() {
-            ret.insert(cx.files().metadata(&unit_dep.unit), env);
-        }
     }
-    Ok((!ret.is_empty()).then(|| ret))
+    Ok(env)
 }
 
 fn unit_artifact_type_name_upper(unit: &Unit) -> &'static str {

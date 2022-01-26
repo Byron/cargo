@@ -205,7 +205,9 @@ fn build_work(cx: &mut Context<'_, '_>, unit: &Unit) -> CargoResult<Job> {
         .inherit_jobserver(&cx.jobserver);
 
     // Find all artifact dependencies and make their file and containing directory discoverable using environment variables.
-    artifact::set_env(cx, dependencies, &mut cmd)?;
+    for (var, value) in artifact::get_env(cx, dependencies)? {
+        cmd.env(&var, value);
+    }
 
     if let Some(linker) = &bcx.target_data.target_config(unit.kind).linker {
         cmd.env(
