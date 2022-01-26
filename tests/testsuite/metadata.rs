@@ -527,8 +527,7 @@ fn cargo_metadata_with_deps_and_version() {
                             "dep_kinds": [
                               {
                                 "kind": null,
-                                "target": null,
-                                "extern_name": "baz"
+                                "target": null
                               }
                             ],
                             "name": "baz",
@@ -554,8 +553,7 @@ fn cargo_metadata_with_deps_and_version() {
                             "dep_kinds": [
                               {
                                 "kind": null,
-                                "target": null,
-                                "extern_name": "bar"
+                                "target": null
                               }
                             ],
                             "name": "bar",
@@ -565,8 +563,7 @@ fn cargo_metadata_with_deps_and_version() {
                             "dep_kinds": [
                               {
                                 "kind": "dev",
-                                "target": null,
-                                "extern_name": "foobar"
+                                "target": null
                               }
                             ],
                             "name": "foobar",
@@ -1620,57 +1617,20 @@ fn workspace_metadata_with_dependencies_and_resolve() {
                   {
                     "dependencies": [
                       "artifact 0.5.0 (path+file://[..]/foo/artifact)",
-                      "bin-only-artifact 0.5.0 (path+file://[..]/foo/bin-only-artifact)",
                       "non-artifact 0.5.0 (path+file://[..]/foo/non-artifact)"
                     ],
                     "deps": [
                       {
                         "dep_kinds": [
                           {
-                            "extern_name": "artifact",
                             "kind": null,
                             "target": null
                           },
                           {
-                            "artifact": "cdylib",
-                            "compile_target": "wasm32-unknown-unknown",
-                            "extern_name": "artifact",
-                            "kind": null,
-                            "target": null
-                          },
-                          {
-                            "artifact": "staticlib",
-                            "compile_target": "wasm32-unknown-unknown",
-                            "extern_name": "artifact",
-                            "kind": null,
-                            "target": null
-                          },
-                          {
-                            "artifact": "bin",
-                            "bin_name": "baz-name",
-                            "compile_target": "wasm32-unknown-unknown",
-                            "extern_name": "baz_name",
-                            "kind": null,
-                            "target": null
-                          },
-                          {
-                            "extern_name": "artifact",
                             "kind": "dev",
                             "target": null
                           },
                           {
-                            "artifact": "bin",
-                            "bin_name": "bar-name",
-                            "compile_target": "target",
-                            "extern_name": "bar_name",
-                            "kind": "build",
-                            "target": null
-                          },
-                          {
-                            "artifact": "bin",
-                            "bin_name": "baz-name",
-                            "compile_target": "target",
-                            "extern_name": "baz_name",
                             "kind": "build",
                             "target": null
                           }
@@ -1681,53 +1641,14 @@ fn workspace_metadata_with_dependencies_and_resolve() {
                       {
                         "dep_kinds": [
                           {
-                            "artifact": "bin",
-                            "bin_name": "a-name",
-                            "extern_name": "a_name",
                             "kind": null,
                             "target": null
                           },
                           {
-                            "artifact": "bin",
-                            "bin_name": "b-name",
-                            "extern_name": "b_name",
                             "kind": "dev",
                             "target": null
                           },
                           {
-                            "artifact": "bin",
-                            "bin_name": "a-name",
-                            "compile_target": "wasm32-unknown-unknown",
-                            "extern_name": "a_name",
-                            "kind": "build",
-                            "target": null
-                          },
-                          {
-                            "artifact": "bin",
-                            "bin_name": "b-name",
-                            "compile_target": "wasm32-unknown-unknown",
-                            "extern_name": "b_name",
-                            "kind": "build",
-                            "target": null
-                          }
-                        ],
-                        "name": "bin_only_artifact",
-                        "pkg": "bin-only-artifact 0.5.0 (path+file://[..]/foo/bin-only-artifact)"
-                      },
-                      {
-                        "dep_kinds": [
-                          {
-                            "extern_name": "non_artifact",
-                            "kind": null,
-                            "target": null
-                          },
-                          {
-                            "extern_name": "non_artifact",
-                            "kind": "dev",
-                            "target": null
-                          },
-                          {
-                            "extern_name": "non_artifact",
                             "kind": "build",
                             "target": null
                           }
@@ -2633,8 +2554,7 @@ fn rename_dependency() {
                         "dep_kinds": [
                           {
                             "kind": null,
-                            "target": null,
-                            "extern_name": "bar"
+                            "target": null
                           }
                         ],
                         "name": "bar",
@@ -2644,8 +2564,7 @@ fn rename_dependency() {
                         "dep_kinds": [
                           {
                             "kind": null,
-                            "target": null,
-                            "extern_name": "baz"
+                            "target": null
                           }
                         ],
                         "name": "baz",
@@ -3261,8 +3180,7 @@ fn filter_platform() {
             "dep_kinds": [
               {
                 "kind": null,
-                "target": "$ALT_TRIPLE",
-                "extern_name": "alt_dep"
+                "target": "$ALT_TRIPLE"
               }
             ]
           },
@@ -3272,8 +3190,7 @@ fn filter_platform() {
             "dep_kinds": [
               {
                 "kind": null,
-                "target": "cfg(foobar)",
-                "extern_name": "cfg_dep"
+                "target": "cfg(foobar)"
               }
             ]
           },
@@ -3283,8 +3200,7 @@ fn filter_platform() {
             "dep_kinds": [
               {
                 "kind": null,
-                "target": "$HOST_TRIPLE",
-                "extern_name": "host_dep"
+                "target": "$HOST_TRIPLE"
               }
             ]
           },
@@ -3294,8 +3210,7 @@ fn filter_platform() {
             "dep_kinds": [
               {
                 "kind": null,
-                "target": null,
-                "extern_name": "normal_dep"
+                "target": null
               }
             ]
           }
@@ -3376,8 +3291,7 @@ fn filter_platform() {
             "dep_kinds": [
               {
                 "kind": null,
-                "target": "$ALT_TRIPLE",
-                "extern_name": "alt_dep"
+                "target": "$ALT_TRIPLE"
               }
             ]
           },
@@ -3387,8 +3301,7 @@ fn filter_platform() {
             "dep_kinds": [
               {
                 "kind": null,
-                "target": null,
-                "extern_name": "normal_dep"
+                "target": null
               }
             ]
           }
@@ -3453,8 +3366,7 @@ fn filter_platform() {
             "dep_kinds": [
               {
                 "kind": null,
-                "target": "$HOST_TRIPLE",
-                "extern_name": "host_dep"
+                "target": "$HOST_TRIPLE"
               }
             ]
           },
@@ -3464,8 +3376,7 @@ fn filter_platform() {
             "dep_kinds": [
               {
                 "kind": null,
-                "target": null,
-                "extern_name": "normal_dep"
+                "target": null
               }
             ]
           }
@@ -3546,8 +3457,7 @@ fn filter_platform() {
             "dep_kinds": [
               {
                 "kind": null,
-                "target": "cfg(foobar)",
-                "extern_name": "cfg_dep"
+                "target": "cfg(foobar)"
               }
             ]
           },
@@ -3557,8 +3467,7 @@ fn filter_platform() {
             "dep_kinds": [
               {
                 "kind": null,
-                "target": "$HOST_TRIPLE",
-                "extern_name": "host_dep"
+                "target": "$HOST_TRIPLE"
               }
             ]
           },
@@ -3568,8 +3477,7 @@ fn filter_platform() {
             "dep_kinds": [
               {
                 "kind": null,
-                "target": null,
-                "extern_name": "normal_dep"
+                "target": null
               }
             ]
           }
@@ -3666,18 +3574,15 @@ fn dep_kinds() {
                         "dep_kinds": [
                           {
                             "kind": null,
-                            "target": null,
-                            "extern_name": "bar"
+                            "target": null
                           },
                           {
                             "kind": "dev",
-                            "target": null,
-                            "extern_name": "bar"
+                            "target": null
                           },
                           {
                             "kind": "build",
-                            "target": null,
-                            "extern_name": "bar"
+                            "target": null
                           }
                         ]
                       },
@@ -3687,8 +3592,7 @@ fn dep_kinds() {
                         "dep_kinds": [
                           {
                             "kind": null,
-                            "target": "cfg(windows)",
-                            "extern_name": "winapi"
+                            "target": "cfg(windows)"
                           }
                         ]
                       }
@@ -3778,8 +3682,7 @@ fn dep_kinds_workspace() {
                         "dep_kinds": [
                           {
                             "kind": null,
-                            "target": null,
-                            "extern_name": "foo"
+                            "target": null
                           }
                         ]
                       }
@@ -3804,8 +3707,7 @@ fn dep_kinds_workspace() {
                         "dep_kinds": [
                           {
                             "kind": null,
-                            "target": null,
-                            "extern_name": "dep"
+                            "target": null
                           }
                         ]
                       }
@@ -3849,9 +3751,9 @@ fn cargo_metadata_non_utf8() {
         .run();
 }
 
-// TODO: Consider using this test instead of the version without the 'bindep' suffix or merge them because they should be pretty much the same.
+// TODO: Consider using this test instead of the version without the 'artifact' suffix or merge them because they should be pretty much the same.
 #[cargo_test]
-fn workspace_metadata_with_dependencies_no_deps_bindep() {
+fn workspace_metadata_with_dependencies_no_deps_artifact() {
     let p = project()
         // NOTE that 'artifact' isn't mentioned in the workspace here, yet it shows up as member.
         .file(

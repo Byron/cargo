@@ -537,8 +537,7 @@ fn update_precise_first_run() {
             "dep_kinds": [
               {
                 "kind": null,
-                "target": null,
-                "extern_name": "serde"
+                "target": null
               }
             ],
             "name": "serde",
