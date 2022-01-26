@@ -116,7 +116,7 @@ impl std::fmt::Display for FeaturesFor {
         match self {
             FeaturesFor::HostDep => f.write_str("host"),
             FeaturesFor::NormalOrDevOrArtifactTarget(Some(target)) => {
-                f.write_str(target.rustc_target())
+                f.write_str(&target.rustc_target())
             }
             FeaturesFor::NormalOrDevOrArtifactTarget(None) => Ok(()),
         }

@@ -265,6 +265,12 @@ fn rustc(cx: &mut Context<'_, '_>, unit: &Unit, exec: &Arc<dyn Executor>) -> Car
     let artifact = unit.artifact;
 
     return Ok(Work::new(move |state| {
+        // Artifacts are in a different location than typical units, hence
+        // we must assure the crate- and target-dependent directory is present.
+        if artifact.is_true() {
+            paths::create_dir_all(&root)?;
+        }
+
         // Only at runtime have we discovered what the extra -L and -l
         // arguments are for native libraries, so we process those here. We
         // also need to be sure to add any -L paths for our plugins to the
@@ -272,13 +278,6 @@ fn rustc(cx: &mut Context<'_, '_>, unit: &Unit, exec: &Arc<dyn Executor>) -> Car
         // located somewhere in there.
         // Finally, if custom environment variables have been produced by
         // previous build scripts, we include them in the rustc invocation.
-
-        // Artifacts are in a different location than typical units, hence
-        // we must assure the crate- and target-dependent directory is present.
-        if artifact.is_true() {
-            paths::create_dir_all(&root)?;
-        }
-
         if let Some(build_scripts) = build_scripts {
             let script_outputs = build_script_outputs.lock().unwrap();
             if !build_plan {
@@ -626,7 +625,7 @@ fn prepare_rustc(
 
 fn rustdoc(cx: &mut Context<'_, '_>, unit: &Unit) -> CargoResult<Work> {
     let bcx = cx.bcx;
-    // script_metadata is not needed here, it is only for tests.
+    // script_metadata is not needed here, it is only for tests. The same is true for artifact metadata.
     let mut rustdoc = cx.compilation.rustdoc_process(unit, None, None)?;
     rustdoc.inherit_jobserver(&cx.jobserver);
     let crate_name = unit.target.crate_name();

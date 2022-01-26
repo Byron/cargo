@@ -15,7 +15,7 @@ use crate::util::{config, CargoResult, Config};
 pub struct Doctest {
     /// What's being doctested
     pub unit: Unit,
-    /// The above units metadata key for accessing artifact environment variables.
+    /// The metadata keys for the dependencies of the `unit` above for accessing artifact environment variables.
     pub artifact_meta: Vec<Metadata>,
     /// Arguments needed to pass to rustdoc to run this test.
     pub args: Vec<OsString>,

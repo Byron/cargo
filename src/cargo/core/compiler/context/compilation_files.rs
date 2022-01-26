@@ -289,8 +289,8 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
         self.layout(CompileKind::Host).build().join(dir)
     }
 
-    /// Returns the directory where a compiled artifacts are stored.
-    /// `/path/to/target/{debug,release}/deps/artifact/PKG-HASH`
+    /// Returns the directory for compiled artifacts files.
+    /// `/path/to/target/{debug,release}/deps/artifact/KIND/PKG-HASH`
     fn artifact_dir(&self, unit: &Unit) -> PathBuf {
         assert!(self.metas.contains_key(unit));
         assert!(unit.artifact.is_true());

@@ -458,7 +458,7 @@ impl ser::Serialize for Artifact {
             lib: self.is_lib,
             target: self.target.as_ref().map(|t| match t {
                 ArtifactTarget::BuildDependencyAssumeTarget => "target",
-                ArtifactTarget::Force(target) => target.rustc_target(),
+                ArtifactTarget::Force(target) => target.rustc_target().as_str(),
             }),
         }
         .serialize(s)

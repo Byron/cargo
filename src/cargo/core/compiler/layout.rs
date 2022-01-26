@@ -48,7 +48,7 @@
 //!         deps/
 //!
 //!             # Each artifact dependency gets in its own directory.
-//!             /artifact/$pkgname-$META/
+//!             /artifact/$pkgname-$META/$kind
 //!
 //!         # Root directory for all compiled examples.
 //!         examples/
