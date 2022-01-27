@@ -1384,6 +1384,7 @@ foo v0.0.0 ([CWD])
 }
 
 #[cargo_test]
+#[ignore]
 fn targets_are_picked_up_from_non_workspace_artifact_deps() {
     if cross_compile::disabled() {
         return;

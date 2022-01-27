@@ -1967,7 +1967,7 @@ impl<P: ResolveToPath> DetailedTomlDependency<P> {
             self.target.as_deref(),
         ) {
             if cx.config.cli_unstable().bindeps {
-                let mut artifact = Artifact::parse(artifact.iter(), is_lib, target)?;
+                let mut artifact = Artifact::parse(artifact, is_lib, target)?;
                 if dep.kind() != DepKind::Build
                     && artifact.target() == Some(ArtifactTarget::BuildDependencyAssumeTarget)
                 {
