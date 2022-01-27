@@ -799,17 +799,30 @@ impl<'cfg> RustcTargetData<'cfg> {
                 return Ok(());
             }
             // Dependencies in the resolve data are partial because they don't contain the artifact information, it simply can't be represented there
-            // and the decision was made not to change it just yet. While that is the case, we have to enrich the partial resolve data with the downloaded manifests.
-            let complete_dependencies = pkg_set
-                .get_one(pkg_id)
-                .expect("packages downloaded")
-                .dependencies();
+            // and registry information is only as rich as needed to resolve the package graph, and artifacts (or forced-target) don't affect it currently.
+            //
+            // We only want to handle packages that actually were downloaded already using logic that downloads accessible only - otherwise we download packages
+            // that won't be part of the unit graph.
+            let package = match pkg_set.get_one_without_download(pkg_id) {
+                Some(package) => package,
+                None => {
+                    for (dep_id, _deps) in resolve.deps(pkg_id) {
+                        recurse_dependencies(this, resolve, dep_id, pkg_set, changed_deps, seen)?;
+                    }
+                    return Ok(());
+                }
+            };
+            let complete_dependencies = package.dependencies();
+
+            // Collect compile targets from the non-workspace dependency graph as well.
+            if let Some(forced_kind) = package.manifest().forced_kind() {
+                this.merge_compile_kind(forced_kind)?;
+            }
             for (dep_id, deps) in resolve.deps(pkg_id) {
                 let compile_kinds = deps.iter().filter_map(|d| {
                     let complete_dep = complete_dependencies
                         .iter()
-                        .find(|cd| cd.matches_dep(dep_id, d))
-                        .expect("resolved deps must match data in downloaded manifests");
+                        .find(|cd| cd.matches_dep(dep_id, d))?;
                     if let Some(artifact) = complete_dep.artifact() {
                         let mut dn = d.clone();
                         dn.set_artifact(artifact.to_owned());
