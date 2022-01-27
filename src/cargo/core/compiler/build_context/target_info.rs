@@ -1,7 +1,9 @@
 use crate::core::compiler::{
     BuildOutput, CompileKind, CompileMode, CompileTarget, Context, CrateType,
 };
-use crate::core::{Dependency, Package, PackageId, Resolve, Target, TargetKind, Workspace};
+use crate::core::{
+    Dependency, Package, PackageId, PackageSet, Resolve, Target, TargetKind, Workspace,
+};
 use crate::util::config::{Config, StringList, TargetConfig};
 use crate::util::{CargoResult, Rustc};
 use anyhow::Context as _;
@@ -780,31 +782,65 @@ impl<'cfg> RustcTargetData<'cfg> {
     pub(crate) fn merge_artifact_targets(
         &mut self,
         ws: &Workspace<'_>,
-        resolve: &Resolve,
+        resolve: &mut Resolve,
+        pkg_set: &PackageSet<'_>,
     ) -> CargoResult<()> {
+        let mut deps_with_artifacts =
+            std::collections::HashMap::<(PackageId, PackageId), Vec<Dependency>>::new();
         fn recurse_dependencies(
             this: &mut RustcTargetData<'_>,
             resolve: &Resolve,
             pkg_id: PackageId,
+            pkg_set: &PackageSet<'_>,
+            changed_deps: &mut std::collections::HashMap<(PackageId, PackageId), Vec<Dependency>>,
             seen: &mut HashSet<PackageId>,
         ) -> CargoResult<()> {
-            if seen.insert(pkg_id).is_none() {
-                for (dep_id, deps) in resolve.deps(pkg_id) {
-                    for kind in deps
+            if seen.insert(pkg_id).is_some() {
+                return Ok(());
+            }
+            // Dependencies in the resolve data are partial because they don't contain the artifact information, it simply can't be represented there
+            // and the decision was made not to change it just yet. While that is the case, we have to enrich the partial resolve data with the downloaded manifests.
+            let complete_dependencies = pkg_set
+                .get_one(pkg_id)
+                .expect("packages downloaded")
+                .dependencies();
+            for (dep_id, deps) in resolve.deps(pkg_id) {
+                let compile_kinds = deps.iter().filter_map(|d| {
+                    let complete_dep = complete_dependencies
                         .iter()
-                        .filter_map(|d| d.artifact()?.target()?.to_compile_kind())
-                    {
-                        this.merge_compile_kind(kind)?;
+                        .find(|cd| cd.matches_dep(dep_id, d))
+                        .expect("resolved deps must match data in downloaded manifests");
+                    if let Some(artifact) = complete_dep.artifact() {
+                        let mut dn = d.clone();
+                        dn.set_artifact(artifact.to_owned());
+                        changed_deps
+                            .entry((pkg_id, dep_id))
+                            .or_insert_with(Vec::new)
+                            .push(dn);
                     }
-                    recurse_dependencies(this, resolve, dep_id, seen)?;
+                    complete_dep.artifact()?.target()?.to_compile_kind()
+                });
+                for kind in compile_kinds {
+                    this.merge_compile_kind(kind)?;
                 }
+                recurse_dependencies(this, resolve, dep_id, pkg_set, changed_deps, seen)?;
             }
             Ok(())
         }
+
         let mut seen = HashSet::new();
         for member in ws.members() {
-            recurse_dependencies(self, resolve, member.package_id(), &mut seen)?;
+            recurse_dependencies(
+                self,
+                resolve,
+                member.package_id(),
+                pkg_set,
+                &mut deps_with_artifacts,
+                &mut seen,
+            )?;
         }
+
+        resolve.replace_dependencies(deps_with_artifacts);
         Ok(())
     }
 

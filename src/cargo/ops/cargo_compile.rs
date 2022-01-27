@@ -394,11 +394,11 @@ pub fn create_bcx<'a, 'cfg>(
     let WorkspaceResolve {
         mut pkg_set,
         workspace_resolve,
-        targeted_resolve: resolve,
+        targeted_resolve: mut resolve,
         resolved_features,
     } = resolve;
 
-    target_data.merge_artifact_targets(ws, &resolve)?;
+    target_data.merge_artifact_targets(ws, &mut resolve, &pkg_set)?;
 
     let std_resolve_features = if let Some(crates) = &config.cli_unstable().build_std {
         if build_config.build_plan {

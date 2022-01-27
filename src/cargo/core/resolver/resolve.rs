@@ -243,6 +243,22 @@ unable to verify that `{0}` is the same as when the lockfile was generated
             .map(move |(id, deps)| (self.replacement(id).unwrap_or(id), deps))
     }
 
+    pub(crate) fn replace_dependencies(
+        &mut self,
+        dependencies: HashMap<(PackageId, PackageId), Vec<Dependency>>,
+    ) {
+        for ((parent_pkg_id, dep_id), dependencies) in dependencies {
+            let current_deps = self.graph.link(parent_pkg_id, dep_id);
+            let new_deps = current_deps.iter().map(|d| {
+                dependencies
+                    .iter()
+                    .find_map(|dn| dn.matches_dep(dep_id, d).then(|| dn.to_owned()))
+                    .unwrap_or_else(|| d.to_owned())
+            });
+            *current_deps = new_deps.collect();
+        }
+    }
+
     pub fn deps_not_replaced(
         &self,
         pkg: PackageId,
