@@ -789,17 +789,34 @@ impl<'a, 'cfg> FeatureResolver<'a, 'cfg> {
                         true
                     })
                     .flat_map(|dep| {
-                        let fk = if fk == FeaturesFor::default() {
+                        // Each `dep`endency can be built for multiple targets. For one, it may be a library target
+                        // which is built as initially configured by `fk`. If it appears as build dependency,
+                        // it must be built for the host.
+                        //
+                        // It may also be an artifact dependency, which could be built either
+                        //
+                        //  - for a specified (aka 'forced') target, specified by `dep = { …, target = <triple>` }`
+                        //  - as an artifact for use in build dependencies that should build for whichever `--target`s are specified
+                        //  - like a library would be built
+                        //
+                        // Generally, the logic for choosing a target for dependencies is unaltered and used to determine
+                        // how to build non-artifacts, artifacts without target specification and no library, or an artifacts library.
+                        //
+                        // All this may result in a dependency being built multiple times for various targets which are either specified
+                        // in the manifest or on the cargo command-line.
+                        let lib_fk = if fk == FeaturesFor::default() {
                             (self.track_for_host && (dep.is_build() || self.is_proc_macro(dep_id)))
                                 .then(|| FeaturesFor::HostDep)
                                 .unwrap_or_default()
                         } else {
                             fk
                         };
-                        let dep_fks = match dep.artifact().map(|a| {
+
+                        // `artifact_target_keys` are produced to fulfil the needs of artifacts that have a target specification.
+                        let artifact_target_keys = dep.artifact().map(|artifact| {
                             (
-                                a.is_lib(),
-                                a.target().map(|target| match target {
+                                artifact.is_lib(),
+                                artifact.target().map(|target| match target {
                                     ArtifactTarget::Force(target) => {
                                         vec![FeaturesFor::NormalOrDevOrArtifactTarget(Some(target))]
                                     }
@@ -817,13 +834,20 @@ impl<'a, 'cfg> FeatureResolver<'a, 'cfg> {
                                         .collect(),
                                 }),
                             )
-                        }) {
+                        });
+
+                        let dep_fks = match artifact_target_keys {
+                            // The artifact is also a library and does specify custom targets.
+                            // The library's feature key needs to be used alongside the keys artifact targets.
                             Some((is_lib, Some(mut dep_fks))) if is_lib => {
-                                dep_fks.push(fk);
+                                dep_fks.push(lib_fk);
                                 dep_fks
                             }
+                            // The artifact is not a library, but does specify custom targets. Use only these targets feature keys.
                             Some((_, Some(dep_fks))) => dep_fks,
-                            Some((_, None)) | None => vec![fk],
+                            // There is no artifact in the current dependency or there is no target specified on the artifact.
+                            // Use the standard feature key without any alteration.
+                            Some((_, None)) | None => vec![lib_fk],
                         };
                         dep_fks.into_iter().map(move |dep_fk| (dep, dep_fk))
                     })
