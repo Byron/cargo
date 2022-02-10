@@ -1967,17 +1967,14 @@ impl<P: ResolveToPath> DetailedTomlDependency<P> {
             self.target.as_deref(),
         ) {
             if cx.config.cli_unstable().bindeps {
-                let mut artifact = Artifact::parse(artifact, is_lib, target)?;
+                let artifact = Artifact::parse(artifact, is_lib, target)?;
                 if dep.kind() != DepKind::Build
                     && artifact.target() == Some(ArtifactTarget::BuildDependencyAssumeTarget)
                 {
-                    cx.warnings.push(
-                        format!(
-                            r#"`target = "target"` in normal- or dev-dependencies has no effect ({})"#, name_in_toml
-                        )
-                        .into(),
+                    bail!(
+                        r#"`target = "target"` in normal- or dev-dependencies has no effect ({})"#,
+                        name_in_toml
                     );
-                    artifact.clear_target();
                 }
                 dep.set_artifact(artifact)
             } else {
@@ -1991,19 +1988,11 @@ impl<P: ResolveToPath> DetailedTomlDependency<P> {
                 if !is_set {
                     continue;
                 }
-                if cx.config.cli_unstable().bindeps {
-                    bail!(
-                        "'{}' specifier cannot be used without an 'artifact = …' value ({})",
-                        specifier,
-                        name_in_toml
-                    )
-                } else {
-                    cx.warnings.push(
-                        format!("`{}` specifiers need an `artifact = …` value and would fail the operation when `-Z bindeps` is provided ({})", 
-                                specifier, name_in_toml)
-                            .into(),
-                    )
-                }
+                bail!(
+                    "'{}' specifier cannot be used without an 'artifact = …' value ({})",
+                    specifier,
+                    name_in_toml
+                )
             }
         }
         Ok(dep)

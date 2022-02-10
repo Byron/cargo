@@ -42,6 +42,18 @@ Caused by:
         .with_status(101)
         .run();
 
+    fn run_cargo_with_and_without_bindeps_feature(
+        p: &Project,
+        cmd: &str,
+        assert: &dyn Fn(&mut cargo_test_support::Execs),
+    ) {
+        assert(
+            p.cargo(&format!("{} -Z unstable-options -Z bindeps", cmd))
+                .masquerade_as_nightly_cargo(),
+        );
+        assert(&mut p.cargo(cmd));
+    }
+
     // lib specified without artifact
     let p = project()
         .file(
@@ -60,18 +72,19 @@ Caused by:
         .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
         .file("bar/src/lib.rs", "")
         .build();
-    p.cargo("check -Z unstable-options -Z bindeps")
-        .masquerade_as_nightly_cargo()
-        .with_stderr(
-            "\
+    run_cargo_with_and_without_bindeps_feature(&p, "check", &|cargo| {
+        cargo
+            .with_stderr(
+                "\
 [ERROR] failed to parse manifest at `[..]/Cargo.toml`
 
 Caused by:
   'lib' specifier cannot be used without an 'artifact = …' value (bar)
 ",
-        )
-        .with_status(101)
-        .run();
+            )
+            .with_status(101)
+            .run();
+    });
 
     // target specified without artifact
     let p = project()
@@ -91,18 +104,19 @@ Caused by:
         .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
         .file("bar/src/lib.rs", "")
         .build();
-    p.cargo("check -Z unstable-options -Z bindeps")
-        .masquerade_as_nightly_cargo()
-        .with_stderr(
-            "\
+    run_cargo_with_and_without_bindeps_feature(&p, "check", &|cargo| {
+        cargo
+            .with_stderr(
+                "\
 [ERROR] failed to parse manifest at `[..]/Cargo.toml`
 
 Caused by:
   'target' specifier cannot be used without an 'artifact = …' value (bar)
 ",
-        )
-        .with_status(101)
-        .run();
+            )
+            .with_status(101)
+            .run();
+    })
 }
 
 #[cargo_test]
@@ -163,62 +177,6 @@ fn build_without_nightly_aborts_with_error() {
 
 Caused by:
   `artifact = …` requires `-Z bindeps` (bar)
-",
-        )
-        .run();
-
-    let p = project()
-        .file(
-            "Cargo.toml",
-            r#"
-                [package]
-                name = "foo"
-                version = "0.0.0"
-                authors = []
-                
-                [dependencies]
-                bar = { path = "bar/", lib = false }
-            "#,
-        )
-        .file("src/lib.rs", "extern crate bar;") // this would fail if artifacts are available as these aren't libs by default
-        .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
-        .file("bar/src/lib.rs", "")
-        .build();
-    p.cargo("check")
-        .with_stderr(
-            "\
-[WARNING] `lib` specifiers need an `artifact = …` value and would fail the operation when `-Z bindeps` is provided (bar)
-[CHECKING] bar [..]
-[CHECKING] foo [..]
-[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
-",
-        )
-        .run();
-
-    let p = project()
-        .file(
-            "Cargo.toml",
-            r#"
-                [package]
-                name = "foo"
-                version = "0.0.0"
-                authors = []
-                
-                [dependencies]
-                bar = { path = "bar/", target = "target" }
-            "#,
-        )
-        .file("src/lib.rs", "extern crate bar;") // this would fail if artifacts are available as these aren't libs by default
-        .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
-        .file("bar/src/lib.rs", "")
-        .build();
-    p.cargo("check")
-        .with_stderr(
-            "\
-[WARNING] `target` specifiers need an `artifact = …` value and would fail the operation when `-Z bindeps` is provided (bar)
-[CHECKING] bar [..]
-[CHECKING] foo [..]
-[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]
 ",
         )
         .run();
@@ -1655,7 +1613,7 @@ fn check_missing_crate_type_in_package_fails() {
 }
 
 #[cargo_test]
-fn check_target_equals_target_in_non_build_dependency_causes_warning() {
+fn check_target_equals_target_in_non_build_dependency_errors() {
     let p = project()
         .file(
             "Cargo.toml",
@@ -1676,8 +1634,9 @@ fn check_target_equals_target_in_non_build_dependency_causes_warning() {
         .build();
     p.cargo("check -Z unstable-options -Z bindeps")
         .masquerade_as_nightly_cargo()
+        .with_status(101)
         .with_stderr_contains(
-            "[WARNING] `target = \"target\"` in normal- or dev-dependencies has no effect (bar)",
+            "  `target = \"target\"` in normal- or dev-dependencies has no effect (bar)",
         )
         .run();
 }

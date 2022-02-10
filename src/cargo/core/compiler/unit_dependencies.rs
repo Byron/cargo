@@ -15,6 +15,10 @@
 //! (for example, with and without tests), so we actually build a dependency
 //! graph of `Unit`s, which capture these properties.
 
+use std::collections::{HashMap, HashSet};
+
+use log::trace;
+
 use crate::core::compiler::unit_graph::{UnitDep, UnitGraph};
 use crate::core::compiler::{
     CompileKind, CompileMode, CrateType, RustcTargetData, Unit, UnitInterner,
@@ -28,8 +32,6 @@ use crate::ops::resolve_all_features;
 use crate::util::interning::InternedString;
 use crate::util::Config;
 use crate::CargoResult;
-use log::trace;
-use std::collections::{HashMap, HashSet};
 
 const IS_NO_ARTIFACT_DEP: Option<&'static Artifact> = None;
 
