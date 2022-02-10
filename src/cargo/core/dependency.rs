@@ -407,13 +407,6 @@ impl Dependency {
                 || (self.inner.req.matches(id.version()) && self.inner.source_id == id.source_id()))
     }
 
-    /// Returns `true` if this dependency is identical as `dep` and `dep_id`, even though their actual data might differ.
-    pub(crate) fn matches_dep(&self, dep_id: PackageId, dep: &Self) -> bool {
-        self.matches_id(dep_id)
-            && self.kind() == dep.kind()
-            && self.explicit_name_in_toml() == dep.explicit_name_in_toml()
-    }
-
     pub fn map_source(mut self, to_replace: SourceId, replace_with: SourceId) -> Dependency {
         if self.source_id() == to_replace {
             self.set_source_id(replace_with);
