@@ -428,7 +428,8 @@ fn calc_artifact_deps(
     {
         has_artifact = true;
         artifact_lib |= artifact.is_lib();
-        // Custom build scripts (build/compile) never get artifact dependencies, but the run-build-script step does (where it is handled).
+        // Custom build scripts (build/compile) never get artifact dependencies,
+        // but the run-build-script step does (where it is handled).
         if !unit.target.is_custom_build() {
             debug_assert!(
                 !unit.mode.is_run_custom_build(),
@@ -525,8 +526,9 @@ fn build_artifact_requirements_to_units(
     state: &State<'_, '_>,
 ) -> CargoResult<Vec<UnitDep>> {
     let mut ret = Vec::new();
-    // So, this really wants to be true for build dependencies, otherwise resolver = "2" will fail.
-    // It means that the host features will be separated from normal features, thus won't be unified with them.
+    // This really wants to be true for build dependencies, otherwise resolver = "2"
+    // will fail. // It means that the host features will be separated from normal
+    // features, thus won't be unified with them.
     let host_features = true;
     let unit_for = UnitFor::new_host(host_features, root_unit_compile_target);
     for (dep_pkg_id, deps) in artifact_deps {
@@ -552,7 +554,8 @@ fn build_artifact_requirements_to_units(
     Ok(ret)
 }
 
-/// `compile_kind` is the computed kind for the future artifact unit dependency. It must be computed by the caller.
+/// `compile_kind` is the computed kind for the future artifact unit
+/// dependency. It must be computed by the caller.
 fn artifact_targets_to_unit_deps(
     parent: &Unit,
     parent_unit_for: UnitFor,
@@ -564,9 +567,10 @@ fn artifact_targets_to_unit_deps(
     let ret = match_artifacts_kind_with_targets(parent, dep, artifact_pkg.targets())?
         .into_iter()
         .flat_map(|target| {
-            // We split target libraries into individual units, even though rustc is able to produce multiple
-            // kinds in an single invocation for the sole reason that each artifact kind has its own output directory,
-            // something we can't easily teach rustc for now.
+            // We split target libraries into individual units, even though rustc is able
+            // to produce multiple kinds in an single invocation for the sole reason that
+            // each artifact kind has its own output directory, something we can't easily
+            // teach rustc for now.
             match target.kind() {
                 TargetKind::Lib(kinds) => Box::new(
                     kinds
@@ -627,9 +631,8 @@ fn match_artifacts_kind_with_targets<'a>(
         };
         if !found {
             anyhow::bail!(
-                "Dependency `{} = \"{}\"` in crate `{}` requires a `{}` artifact to be present.",
+                "dependency `{}` in package `{}` requires a `{}` artifact to be present.",
                 artifact_dep.name_in_toml(),
-                artifact_dep.version_req(),
                 unit.pkg.name(),
                 artifact_kind
             );

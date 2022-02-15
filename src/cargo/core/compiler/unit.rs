@@ -55,8 +55,8 @@ pub struct UnitInner {
     /// The `cfg` features to enable for this unit.
     /// This must be sorted.
     pub features: Vec<InternedString>,
-    // if `true`, the dependency is an artifact dependency, requiring special handling when calculating output directories,
-    // linkage and environment variables provided to builds.
+    // if `true`, the dependency is an artifact dependency, requiring special handling when
+    // calculating output directories, linkage and environment variables provided to builds.
     pub artifact: IsArtifact,
     /// Whether this is a standard library unit.
     pub is_std: bool,

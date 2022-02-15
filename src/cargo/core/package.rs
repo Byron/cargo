@@ -469,10 +469,6 @@ impl<'cfg> PackageSet<'cfg> {
         })
     }
 
-    pub fn get_one_without_download(&self, id: PackageId) -> Option<&Package> {
-        self.packages.get(&id).and_then(|slot| slot.borrow())
-    }
-
     pub fn get_one(&self, id: PackageId) -> CargoResult<&Package> {
         if let Some(pkg) = self.packages.get(&id).and_then(|slot| slot.borrow()) {
             return Ok(pkg);

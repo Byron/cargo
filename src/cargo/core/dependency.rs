@@ -422,8 +422,8 @@ impl Dependency {
         self.inner.artifact.as_ref()
     }
 
-    /// Dependencies are potential rust libs if they are not artifacts or they are an artifact
-    /// which allows to be seen as library.
+    /// Dependencies are potential rust libs if they are not artifacts or they are an
+    /// artifact which allows to be seen as library.
     /// Previously, every dependency was potentially seen as library.
     pub(crate) fn maybe_lib(&self) -> bool {
         self.artifact().map(|a| a.is_lib).unwrap_or(true)
@@ -432,7 +432,8 @@ impl Dependency {
 
 /// The presence of an artifact turns an ordinary dependency into an Artifact dependency.
 /// As such, it will build one or more different artifacts of possibly various kinds
-/// for making them available at build time for rustc invocations or runtime for build scripts.
+/// for making them available at build time for rustc invocations or runtime
+/// for build scripts.
 ///
 /// This information represents a requirement in the package this dependency refers to.
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]

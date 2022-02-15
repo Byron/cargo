@@ -265,8 +265,9 @@ fn rustc(cx: &mut Context<'_, '_>, unit: &Unit, exec: &Arc<dyn Executor>) -> Car
     let artifact = unit.artifact;
 
     return Ok(Work::new(move |state| {
-        // Artifacts are in a different location than typical units, hence
-        // we must assure the crate- and target-dependent directory is present.
+        // Artifacts are in a different location than typical units,
+        // hence we must assure the crate- and target-dependent
+        // directory is present.
         if artifact.is_true() {
             paths::create_dir_all(&root)?;
         }

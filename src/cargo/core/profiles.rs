@@ -940,18 +940,21 @@ pub struct UnitFor {
     panic_setting: PanicSetting,
 
     /// The compile kind of the root unit for which artifact dependencies are built.
-    /// This is required particularly for the `target = "target"` setting of artifact dependencies
-    /// which mean to inherit the `--target` specified on the command-line. However, that is a multi-value
-    /// argument and root units are already created to reflect one unit per --target. Thus we have to build
-    /// one artifact with the correct target for each of these trees.
-    /// Note that this will always be set as we don't initially know if there are artifacts that make use of it.
+    /// This is required particularly for the `target = "target"` setting of artifact
+    /// dependencies which mean to inherit the `--target` specified on the command-line.
+    /// However, that is a multi-value argument and root units are already created to
+    /// reflect one unit per --target. Thus we have to build one artifact with the
+    /// correct target for each of these trees.
+    /// Note that this will always be set as we don't initially know if there are
+    /// artifacts that make use of it.
     root_compile_kind: CompileKind,
 
-    /// This is only set for artifact dependencies which have their `<target-triple>|target` set.
-    /// If so, this information is used as part of the key for resolving their features, allowing for target-dependent feature resolution
-    /// within the entire dependency tree.
-    /// Note that this target corresponds to the target used to build the units in that dependency tree, too, but this copy of it is
-    /// specifically used for feature lookup.
+    /// This is only set for artifact dependencies which have their
+    /// `<target-triple>|target` set.
+    /// If so, this information is used as part of the key for resolving their features,
+    /// allowing for target-dependent feature resolution within the entire dependency tree.
+    /// Note that this target corresponds to the target used to build the units in that
+    /// dependency tree, too, but this copy of it is specifically used for feature lookup.
     artifact_target_for_features: Option<CompileTarget>,
 }
 
@@ -1126,9 +1129,11 @@ impl UnitFor {
         self.panic_setting
     }
 
-    /// We might contain a parent artifact compile kind for features already, but will gladly accept the one of this dependency
-    /// as an override as it defines how the artifact is built.
-    /// If we are an artifact but don't specify a `target`, we assume the default compile kind that is suitable in this situation.
+    /// We might contain a parent artifact compile kind for features already, but will
+    /// gladly accept the one of this dependency as an override as it defines how
+    /// the artifact is built.
+    /// If we are an artifact but don't specify a `target`, we assume the default
+    /// compile kind that is suitable in this situation.
     pub(crate) fn map_to_features_for(&self, dep_artifact: Option<&Artifact>) -> FeaturesFor {
         FeaturesFor::from_for_host_or_artifact_target(
             self.is_for_host_features(),

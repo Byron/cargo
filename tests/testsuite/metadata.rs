@@ -956,7 +956,7 @@ fn workspace_metadata_with_dependencies_no_deps() {
         .file("artifact/src/main.rs", "fn main() {}")
         .build();
 
-    p.cargo("metadata --no-deps -Z unstable-options -Z bindeps")
+    p.cargo("metadata --no-deps -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_json(
             r#"
@@ -1219,7 +1219,7 @@ fn workspace_metadata_with_dependencies_and_resolve() {
         .file("non-artifact/src/lib.rs", "")
         .build();
 
-    p.cargo("metadata -Z unstable-options -Z bindeps")
+    p.cargo("metadata -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_json(
             r#"
@@ -3785,7 +3785,7 @@ fn workspace_metadata_with_dependencies_no_deps_artifact() {
         .file("artifact/src/main.rs", "fn main() {}")
         .build();
 
-    p.cargo("metadata --no-deps -Z unstable-options -Z bindeps")
+    p.cargo("metadata --no-deps -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_json(
             r#"

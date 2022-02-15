@@ -29,7 +29,7 @@ fn check_with_invalid_artifact_dependency() {
         .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
         .file("bar/src/lib.rs", "")
         .build();
-    p.cargo("check -Z unstable-options -Z bindeps")
+    p.cargo("check -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr(
             "\
@@ -48,7 +48,7 @@ Caused by:
         assert: &dyn Fn(&mut cargo_test_support::Execs),
     ) {
         assert(
-            p.cargo(&format!("{} -Z unstable-options -Z bindeps", cmd))
+            p.cargo(&format!("{} -Z bindeps", cmd))
                 .masquerade_as_nightly_cargo(),
         );
         assert(&mut p.cargo(cmd));
@@ -140,7 +140,7 @@ fn check_with_invalid_target_triple() {
         .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
         .file("bar/src/main.rs", "fn main() {}")
         .build();
-    p.cargo("check -Z unstable-options -Z bindeps")
+    p.cargo("check -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr_contains(
             r#"[..]Could not find specification for target "unknown-target-triple"[..]"#,
@@ -203,7 +203,7 @@ fn disallow_artifact_and_no_artifact_dep_to_same_package_within_the_same_dep_cat
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
         .file("bar/src/main.rs", "fn main() {}")
         .build();
-    p.cargo("check -Z unstable-options -Z bindeps")
+    p.cargo("check -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_status(101)
         .with_stderr("\
@@ -309,7 +309,7 @@ fn features_are_unified_among_lib_and_bin_dep_of_same_target() {
         )
         .build();
 
-    p.cargo("build -Z unstable-options -Z bindeps")
+    p.cargo("build -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr(
             "\
@@ -416,7 +416,7 @@ fn features_are_not_unified_among_lib_and_bin_dep_of_different_target() {
         )
         .build();
 
-    p.cargo("build -Z unstable-options -Z bindeps")
+    p.cargo("build -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_status(101)
         .with_stderr_contains(
@@ -486,7 +486,7 @@ fn build_script_with_bin_artifacts() {
         .file("bar/src/bin/baz.rs", "fn main() {}")
         .file("bar/src/lib.rs", "")
         .build();
-    p.cargo("build -Z unstable-options -Z bindeps")
+    p.cargo("build -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr_contains("[COMPILING] foo [..]")
         .with_stderr_contains("[COMPILING] bar v0.5.0 ([CWD]/bar)")
@@ -495,24 +495,7 @@ fn build_script_with_bin_artifacts() {
 
     let build_script_output = build_script_output_string(&p, "foo");
     let msg = "we need the binary directory for this artifact along with all binary paths";
-    #[cfg(any(not(windows), target_env = "gnu"))]
-    {
-        match_exact(
-            "[..]/artifact/bar-[..]/bin/baz-[..]\n\
-             [..]/artifact/bar-[..]/staticlib/libbar-[..].a\n\
-             [..]/artifact/bar-[..]/cdylib/[..]bar.[..]\n\
-             [..]/artifact/bar-[..]/bin\n\
-             [..]/artifact/bar-[..]/bin/bar-[..]\n\
-             [..]/artifact/bar-[..]/bin/bar-[..]",
-            &build_script_output,
-            msg,
-            "",
-            None,
-        )
-        .unwrap();
-    }
-    #[cfg(all(windows, not(target_env = "gnu")))]
-    {
+    if cfg!(target_env = "msvc") {
         match_exact(
             "[..]/artifact/bar-[..]/bin/baz.exe\n\
              [..]/artifact/bar-[..]/staticlib/bar-[..].lib\n\
@@ -520,6 +503,20 @@ fn build_script_with_bin_artifacts() {
              [..]/artifact/bar-[..]/bin\n\
              [..]/artifact/bar-[..]/bin/bar.exe\n\
              [..]/artifact/bar-[..]/bin/bar.exe",
+            &build_script_output,
+            msg,
+            "",
+            None,
+        )
+        .unwrap();
+    } else {
+        match_exact(
+            "[..]/artifact/bar-[..]/bin/baz-[..]\n\
+             [..]/artifact/bar-[..]/staticlib/libbar-[..].a\n\
+             [..]/artifact/bar-[..]/cdylib/[..]bar.[..]\n\
+             [..]/artifact/bar-[..]/bin\n\
+             [..]/artifact/bar-[..]/bin/bar-[..]\n\
+             [..]/artifact/bar-[..]/bin/bar-[..]",
             &build_script_output,
             msg,
             "",
@@ -572,7 +569,7 @@ fn build_script_with_bin_artifact_and_lib_false() {
         "#,
         )
         .build();
-    p.cargo("build -Z unstable-options -Z bindeps")
+    p.cargo("build -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_status(101)
         .with_stderr_contains(
@@ -616,7 +613,7 @@ fn lib_with_bin_artifact_and_lib_false() {
         "#,
         )
         .build();
-    p.cargo("build -Z unstable-options -Z bindeps")
+    p.cargo("build -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_status(101)
         .with_stderr_contains(
@@ -677,7 +674,7 @@ fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
             }
         "#)
         .build();
-    p.cargo("build -Z unstable-options -Z bindeps")
+    p.cargo("build -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr(
             "\
@@ -690,26 +687,23 @@ fn build_script_with_selected_dashed_bin_artifact_and_lib_true() {
     let build_script_output = build_script_output_string(&p, "foo");
     let msg = "we need the binary directory for this artifact and the binary itself";
 
-    #[cfg(any(not(windows), target_env = "gnu"))]
-    {
-        cargo_test_support::compare::match_exact(
-            "[..]/artifact/bar-baz-[..]/bin\n\
-        [..]/artifact/bar-baz-[..]/bin/baz_suffix-[..]",
-            &build_script_output,
-            msg,
-            "",
-            None,
-        )
-        .unwrap();
-    }
-    #[cfg(all(windows, not(target_env = "gnu")))]
-    {
+    if cfg!(target_env = "msvc") {
         cargo_test_support::compare::match_exact(
             &format!(
                 "[..]/artifact/bar-baz-[..]/bin\n\
                  [..]/artifact/bar-baz-[..]/bin/baz_suffix{}",
                 std::env::consts::EXE_SUFFIX,
             ),
+            &build_script_output,
+            msg,
+            "",
+            None,
+        )
+        .unwrap();
+    } else {
+        cargo_test_support::compare::match_exact(
+            "[..]/artifact/bar-baz-[..]/bin\n\
+        [..]/artifact/bar-baz-[..]/bin/baz_suffix-[..]",
             &build_script_output,
             msg,
             "",
@@ -777,7 +771,7 @@ fn lib_with_selected_dashed_bin_artifact_and_lib_true() {
         .file("bar/src/main.rs", "fn main() {}")
         .file("bar/src/lib.rs", "pub fn exists() {}")
         .build();
-    p.cargo("build -Z unstable-options -Z bindeps")
+    p.cargo("build -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr(
             "\
@@ -824,7 +818,7 @@ fn allow_artifact_and_no_artifact_dep_to_same_package_within_different_dep_categ
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
         .file("bar/src/main.rs", "fn main() {}")
         .build();
-    p.cargo("check -Z unstable-options -Z bindeps")
+    p.cargo("check -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr_contains("[COMPILING] bar v0.5.0 ([CWD]/bar)")
         .with_stderr_contains("[CHECKING] foo [..]")
@@ -853,10 +847,10 @@ fn disallow_using_example_binaries_as_artifacts() {
         .file("bar/src/main.rs", "fn main() {}")
         .file("bar/examples/one-example.rs", "fn main() {}")
         .build();
-    p.cargo("build -Z unstable-options -Z bindeps")
+    p.cargo("build -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_status(101)
-        .with_stderr(r#"[ERROR] Dependency `bar = "*"` in crate `foo` requires a `bin:one-example` artifact to be present."#)
+        .with_stderr(r#"[ERROR] dependency `bar` in package `foo` requires a `bin:one-example` artifact to be present."#)
         .run();
 }
 
@@ -902,7 +896,7 @@ fn allow_artifact_and_non_artifact_dependency_to_same_crate() {
             .file("bar/src/lib.rs", "pub fn doit() {}")
         .build();
 
-    p.cargo("check -Z unstable-options -Z bindeps")
+    p.cargo("check -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr_contains("[COMPILING] bar [..]")
         .with_stderr_contains("[COMPILING] foo [..]")
@@ -946,7 +940,7 @@ fn build_script_deps_adopt_specified_target_unconditionally() {
         .file("bar/src/lib.rs", "pub fn doit() {}")
         .build();
 
-    p.cargo("check -v -Z unstable-options -Z bindeps")
+    p.cargo("check -v -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr_does_not_contain(format!(
             "[RUNNING] `rustc --crate-name build_script_build build.rs [..]--target {} [..]",
@@ -1017,7 +1011,7 @@ fn build_script_deps_adopt_do_not_allow_multiple_targets_under_different_name_an
         .file("bar/src/main.rs", "fn main() {}")
         .build();
 
-    p.cargo("check -v -Z unstable-options -Z bindeps")
+    p.cargo("check -v -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_status(101)
         .with_stderr(format!(
@@ -1061,7 +1055,7 @@ fn non_build_script_deps_adopt_specified_target_unconditionally() {
         .file("bar/src/lib.rs", "pub fn doit() {}")
         .build();
 
-    p.cargo("check -v -Z unstable-options -Z bindeps")
+    p.cargo("check -v -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr_contains(format!(
             "[RUNNING] `rustc --crate-name bar bar/src/lib.rs [..]--target {} [..]",
@@ -1118,7 +1112,7 @@ fn no_cross_doctests_works_with_artifacts() {
         .build();
 
     let target = rustc_host();
-    p.cargo("test -Z unstable-options -Z bindeps --target")
+    p.cargo("test -Z bindeps --target")
         .arg(&target)
         .masquerade_as_nightly_cargo()
         .with_stderr(&format!(
@@ -1138,7 +1132,7 @@ fn no_cross_doctests_works_with_artifacts() {
 
     // This will build the library, but does not build or run doc tests.
     // This should probably be a warning or error.
-    p.cargo("test -Z unstable-options -Z bindeps -v --doc --target")
+    p.cargo("test -Z bindeps -v --doc --target")
         .arg(&target)
         .masquerade_as_nightly_cargo()
         .with_stderr_contains(format!(
@@ -1157,7 +1151,7 @@ fn no_cross_doctests_works_with_artifacts() {
     }
 
     // This tests the library, but does not run the doc tests.
-    p.cargo("test -Z unstable-options -Z bindeps -v --target")
+    p.cargo("test -Z bindeps -v --target")
         .arg(&target)
         .masquerade_as_nightly_cargo()
         .with_stderr_contains(&format!(
@@ -1203,7 +1197,7 @@ fn build_script_deps_adopts_target_platform_if_target_equals_target() {
         .build();
 
     let alternate_target = cross_compile::alternate();
-    p.cargo("check -v -Z unstable-options -Z bindeps --target")
+    p.cargo("check -v -Z bindeps --target")
         .arg(alternate_target)
         .masquerade_as_nightly_cargo()
         .with_stderr_does_not_contain(format!(
@@ -1258,7 +1252,7 @@ fn profile_override_basic() {
         .file("bar/src/lib.rs", "pub fn bar() {}")
         .build();
 
-    p.cargo("build -v -Z unstable-options -Z bindeps")
+    p.cargo("build -v -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr_contains(
             "[RUNNING] `rustc --crate-name build_script_build [..] -C opt-level=1 [..]`",
@@ -1323,12 +1317,12 @@ fn dependencies_of_dependencies_work_in_artifacts() {
         .file("bar/src/lib.rs", r#"pub fn bar() {baz::baz()}"#)
         .file("bar/src/main.rs", r#"fn main() {bar::bar()}"#)
         .build();
-    p.cargo("build -Z unstable-options -Z bindeps")
+    p.cargo("build -Z bindeps")
         .masquerade_as_nightly_cargo()
         .run();
 
     // cargo tree sees artifacts as the dependency kind they are in and doesn't do anything special with it.
-    p.cargo("tree -Z unstable-options -Z bindeps")
+    p.cargo("tree -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stdout(
             "\
@@ -1385,7 +1379,7 @@ fn targets_are_picked_up_from_non_workspace_artifact_deps() {
         )
         .build();
 
-    p.cargo("build -Z unstable-options -Z bindeps")
+    p.cargo("build -Z bindeps")
         .masquerade_as_nightly_cargo()
         .run();
 }
@@ -1424,7 +1418,7 @@ fn allow_dep_renames_with_multiple_versions() {
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
         .file("bar/src/main.rs", r#"fn main() {println!("0.5.0")}"#)
         .build();
-    p.cargo("check -Z unstable-options -Z bindeps")
+    p.cargo("check -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr_contains("[COMPILING] bar [..]")
         .with_stderr_contains("[COMPILING] foo [..]")
@@ -1475,7 +1469,7 @@ fn allow_artifact_and_non_artifact_dependency_to_same_crate_if_these_are_not_the
         .file("bar/src/lib.rs", "pub fn doit() {}")
         .file("bar/src/main.rs", "fn main() {}")
         .build();
-    p.cargo("build -Z unstable-options -Z bindeps")
+    p.cargo("build -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr(
             "\
@@ -1510,7 +1504,7 @@ fn prevent_no_lib_warning_with_artifact_dependencies() {
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
         .file("bar/src/main.rs", "fn main() {}")
         .build();
-    p.cargo("check -Z unstable-options -Z bindeps")
+    p.cargo("check -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr(
             "\
@@ -1545,7 +1539,7 @@ fn show_no_lib_warning_with_artifact_dependencies_that_have_no_lib_but_lib_true(
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
         .file("bar/src/main.rs", "fn main() {}")
         .build();
-    p.cargo("check -Z unstable-options -Z bindeps")
+    p.cargo("check -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr_contains("[WARNING] foo v0.0.0 ([CWD]) ignoring invalid dependency `bar` which is missing a lib target")
         .with_stderr_contains("[COMPILING] bar v0.5.0 ([CWD]/bar)")
@@ -1579,7 +1573,7 @@ fn resolver_2_build_dep_without_lib() {
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
         .file("bar/src/main.rs", "fn main() {}")
         .build();
-    p.cargo("check -Z unstable-options -Z bindeps")
+    p.cargo("check -Z bindeps")
         .masquerade_as_nightly_cargo()
         .run();
 }
@@ -1607,11 +1601,11 @@ fn check_missing_crate_type_in_package_fails() {
             .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1")) //no bin, just rlib
             .file("bar/src/lib.rs", "")
             .build();
-        p.cargo("check -Z unstable-options -Z bindeps")
+        p.cargo("check -Z bindeps")
             .masquerade_as_nightly_cargo()
             .with_status(101)
             .with_stderr(
-                "[ERROR] Dependency `bar = \"*\"` in crate `foo` requires a `[..]` artifact to be present.",
+                "[ERROR] dependency `bar` in package `foo` requires a `[..]` artifact to be present.",
             )
             .run();
     }
@@ -1637,7 +1631,7 @@ fn check_target_equals_target_in_non_build_dependency_errors() {
         .file("bar/Cargo.toml", &basic_manifest("bar", "0.0.1"))
         .file("bar/src/main.rs", "fn main() {}")
         .build();
-    p.cargo("check -Z unstable-options -Z bindeps")
+    p.cargo("check -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_status(101)
         .with_stderr_contains(
@@ -1750,7 +1744,7 @@ fn env_vars_and_build_products_for_various_build_targets() {
         .file("bar/src/lib.rs", r#"pub extern "C" fn c() {}"#)
         .file("bar/src/main.rs", "fn main() {}")
         .build();
-    p.cargo("test -Z unstable-options -Z bindeps")
+    p.cargo("test -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr(
             "\
@@ -1796,7 +1790,7 @@ fn publish_artifact_dep() {
         .file("src/lib.rs", "")
         .build();
 
-    p.cargo("publish -Z unstable-options -Z bindeps --no-verify --token sekrit")
+    p.cargo("publish -Z bindeps --no-verify --token sekrit")
         .masquerade_as_nightly_cargo()
         .with_stderr(
             "\
@@ -1909,7 +1903,7 @@ fn doc_lib_true() {
         .file("bar/src/main.rs", "fn main() {}")
         .build();
 
-    p.cargo("doc -Z unstable-options -Z bindeps")
+    p.cargo("doc -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr(
             "\
@@ -1929,7 +1923,7 @@ fn doc_lib_true() {
     assert_eq!(p.glob("target/debug/artifact/*.rlib").count(), 0);
     assert_eq!(p.glob("target/debug/deps/libbar-*.rmeta").count(), 2);
 
-    p.cargo("doc -Z unstable-options -Z bindeps")
+    p.cargo("doc -Z bindeps")
         .masquerade_as_nightly_cargo()
         .env("CARGO_LOG", "cargo::ops::cargo_rustc::fingerprint")
         .with_stdout("")
@@ -1985,7 +1979,7 @@ fn rustdoc_works_on_libs_with_artifacts_and_lib_false() {
         .file("bar/src/main.rs", "fn main() {}")
         .build();
 
-    p.cargo("doc -Z unstable-options -Z bindeps")
+    p.cargo("doc -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_stderr(
             "\
@@ -2010,20 +2004,7 @@ fn assert_artifact_executable_output(
     dep_name: &str,
     bin_name: &str,
 ) {
-    #[cfg(any(not(windows), target_env = "gnu"))]
-    {
-        assert_eq!(
-            p.glob(format!(
-                "target/{}/deps/artifact/{}-*/bin/{}-*.d",
-                target_name, dep_name, bin_name
-            ))
-            .count(),
-            1,
-            "artifacts are placed into their own output directory to not possibly clash"
-        );
-    }
-    #[cfg(all(windows, not(target_env = "gnu")))]
-    {
+    if cfg!(target_env = "msvc") {
         assert_eq!(
             p.glob(format!(
                 "target/{}/deps/artifact/{}-*/bin/{}{}",
@@ -2032,6 +2013,21 @@ fn assert_artifact_executable_output(
                 bin_name,
                 std::env::consts::EXE_SUFFIX
             ))
+            .count(),
+            1,
+            "artifacts are placed into their own output directory to not possibly clash"
+        );
+    } else {
+        assert_eq!(
+            p.glob(format!(
+                "target/{}/deps/artifact/{}-*/bin/{}-*{}",
+                target_name,
+                dep_name,
+                bin_name,
+                std::env::consts::EXE_SUFFIX
+            ))
+            .filter_map(Result::ok)
+            .filter(|f| f.extension().map_or(true, |ext| ext != "o" && ext != "d"))
             .count(),
             1,
             "artifacts are placed into their own output directory to not possibly clash"

@@ -821,7 +821,7 @@ the command line) target.
 Allow Cargo packages to depend on `bin`, `cdylib`, and `staticlib` crates, 
 and use the artifacts built by those crates at compile time.
 
-Run `cargo` with `-Z unstable-options -Z bindeps` to enable this functionality.
+Run `cargo` with `-Z bindeps` to enable this functionality.
 
 **Example:** use _cdylib_ artifact in build script
 

@@ -63,10 +63,12 @@ pub struct ResolvedFeatures {
 /// Options for how the feature resolver works.
 #[derive(Default)]
 pub struct FeatureOpts {
-    /// Build deps and proc-macros will not share share features with other dep kinds, and so won't artifact targets.
-    /// In other terms, if true, features associated with certain kinds of dependencies will only be unified together.
-    /// If false, there is only one namespace for features, unifying all features across all dependencies, no matter
-    /// what kind.
+    /// Build deps and proc-macros will not share share features with other dep kinds,
+    /// and so won't artifact targets.
+    /// In other terms, if true, features associated with certain kinds of dependencies
+    /// will only be unified together.
+    /// If false, there is only one namespace for features, unifying all features across
+    /// all dependencies, no matter what kind.
     decouple_host_deps: bool,
     /// Dev dep features will not be activated unless needed.
     decouple_dev_deps: bool,
@@ -99,7 +101,8 @@ pub enum ForceAllTargets {
 /// Flag to indicate if features are requested for a build dependency or not.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub enum FeaturesFor {
-    /// If `Some(target)` is present, we represent an artifact target. Otherwise any other normal or dev dependency.
+    /// If `Some(target)` is present, we represent an artifact target.
+    /// Otherwise any other normal or dev dependency.
     NormalOrDevOrArtifactTarget(Option<CompileTarget>),
     /// Build dependency or proc-macro.
     HostDep,
@@ -789,21 +792,28 @@ impl<'a, 'cfg> FeatureResolver<'a, 'cfg> {
                         true
                     })
                     .flat_map(|dep| {
-                        // Each `dep`endency can be built for multiple targets. For one, it may be a library target
-                        // which is built as initially configured by `fk`. If it appears as build dependency,
-                        // it must be built for the host.
+                        // Each `dep`endency can be built for multiple targets. For one, it
+                        // may be a library target which is built as initially configured
+                        // by `fk`. If it appears as build dependency, it must be built
+                        // for the host.
                         //
-                        // It may also be an artifact dependency, which could be built either
+                        // It may also be an artifact dependency,
+                        // which could be built either
                         //
-                        //  - for a specified (aka 'forced') target, specified by `dep = { …, target = <triple>` }`
-                        //  - as an artifact for use in build dependencies that should build for whichever `--target`s are specified
+                        //  - for a specified (aka 'forced') target, specified by
+                        //    `dep = { …, target = <triple>` }`
+                        //  - as an artifact for use in build dependencies that should
+                        //    build for whichever `--target`s are specified
                         //  - like a library would be built
                         //
-                        // Generally, the logic for choosing a target for dependencies is unaltered and used to determine
-                        // how to build non-artifacts, artifacts without target specification and no library, or an artifacts library.
+                        // Generally, the logic for choosing a target for dependencies is
+                        // unaltered and used to determine how to build non-artifacts,
+                        // artifacts without target specification and no library,
+                        // or an artifacts library.
                         //
-                        // All this may result in a dependency being built multiple times for various targets which are either specified
-                        // in the manifest or on the cargo command-line.
+                        // All this may result in a dependency being built multiple times
+                        // for various targets which are either specified in the manifest
+                        // or on the cargo command-line.
                         let lib_fk = if fk == FeaturesFor::default() {
                             (self.track_for_host && (dep.is_build() || self.is_proc_macro(dep_id)))
                                 .then(|| FeaturesFor::HostDep)
@@ -837,15 +847,20 @@ impl<'a, 'cfg> FeatureResolver<'a, 'cfg> {
                         });
 
                         let dep_fks = match artifact_target_keys {
-                            // The artifact is also a library and does specify custom targets.
-                            // The library's feature key needs to be used alongside the keys artifact targets.
+                            // The artifact is also a library and does specify custom
+                            // targets.
+                            // The library's feature key needs to be used alongside
+                            // the keys artifact targets.
                             Some((is_lib, Some(mut dep_fks))) if is_lib => {
                                 dep_fks.push(lib_fk);
                                 dep_fks
                             }
-                            // The artifact is not a library, but does specify custom targets. Use only these targets feature keys.
+                            // The artifact is not a library, but does specify
+                            // custom targets.
+                            // Use only these targets feature keys.
                             Some((_, Some(dep_fks))) => dep_fks,
-                            // There is no artifact in the current dependency or there is no target specified on the artifact.
+                            // There is no artifact in the current dependency
+                            // or there is no target specified on the artifact.
                             // Use the standard feature key without any alteration.
                             Some((_, None)) | None => vec![lib_fk],
                         };

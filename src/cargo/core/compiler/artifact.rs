@@ -6,7 +6,8 @@ use crate::CargoResult;
 use std::collections::HashMap;
 use std::ffi::OsString;
 
-/// Return all environment variables for the given unit-dependencies if artifacts are present.
+/// Return all environment variables for the given unit-dependencies
+/// if artifacts are present.
 pub fn get_env(
     cx: &Context<'_, '_>,
     dependencies: &[UnitDep],
