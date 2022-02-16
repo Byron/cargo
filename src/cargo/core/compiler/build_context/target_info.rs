@@ -776,6 +776,7 @@ impl<'cfg> RustcTargetData<'cfg> {
         Ok(res)
     }
 
+    /// Insert `kind` into our `target_info` and `target_config` members if it isn't present yet.
     fn merge_compile_kind(&mut self, kind: CompileKind) -> CargoResult<()> {
         if let CompileKind::Target(target) = kind {
             if !self.target_config.contains_key(&target) {

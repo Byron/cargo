@@ -398,6 +398,10 @@ fn compute_deps(
     Ok(ret)
 }
 
+/// Try to find a target in `dep_pkg` which is a library.
+///
+/// `has_artifact` is true if `dep_pkg` has any artifact, and `artifact_lib` is true
+/// if any of them wants a library to be available too.
 fn package_lib(dep_pkg: &Package, has_artifact: bool, artifact_lib: bool) -> Option<&Target> {
     dep_pkg.targets().iter().find(|t| {
         if has_artifact {
@@ -408,7 +412,8 @@ fn package_lib(dep_pkg: &Package, has_artifact: bool, artifact_lib: bool) -> Opt
     })
 }
 
-/// Adds build requests for artifact dependencies of `unit`.
+/// Find artifacts for all `deps` of `unit` and add units that build these artifacts
+/// to `ret`.
 fn calc_artifact_deps(
     unit: &Unit,
     unit_for: UnitFor,
@@ -519,6 +524,14 @@ fn compute_deps_custom_build(
     }
 }
 
+/// Given a `parent` unit which is a build script with artifact dependencies `artifact_deps`,
+/// produce units that build all required artifact kinds (like binaries,
+/// static libraries, etc) with the correct compile target.
+///
+/// Computing the compile target for artifact units is more involved as it has to handle
+/// various target configurations specific to artifacts, like `target = "target"` and
+/// `target = "<triple>"`, which makes knowing the root units compile target
+/// `root_unit_compile_target` necessary.
 fn build_artifact_requirements_to_units(
     parent: &Unit,
     root_unit_compile_target: CompileKind,
@@ -554,8 +567,16 @@ fn build_artifact_requirements_to_units(
     Ok(ret)
 }
 
+/// Given a `parent` unit containing a dependency `dep` whose package is `artifact_pkg`,
+/// find all targets in `artifact_pkg` which refer to the `dep`s artifact declaration
+/// and turn them into units.
+/// Due to the nature of artifact dependencies, a single dependency in a manifest can
+/// cause one or more targets to be build, for instance with
+/// `artifact = ["bin:a", "bin:b", "staticlib"]`, which is very different from normal
+/// dependencies which cause only a single unit to be created.
+///
 /// `compile_kind` is the computed kind for the future artifact unit
-/// dependency. It must be computed by the caller.
+/// dependency, only the caller can pick the correct one.
 fn artifact_targets_to_unit_deps(
     parent: &Unit,
     parent_unit_for: UnitFor,
@@ -564,53 +585,59 @@ fn artifact_targets_to_unit_deps(
     artifact_pkg: &Package,
     dep: &Dependency,
 ) -> CargoResult<Vec<UnitDep>> {
-    let ret = match_artifacts_kind_with_targets(parent, dep, artifact_pkg.targets())?
-        .into_iter()
-        .flat_map(|target| {
-            // We split target libraries into individual units, even though rustc is able
-            // to produce multiple kinds in an single invocation for the sole reason that
-            // each artifact kind has its own output directory, something we can't easily
-            // teach rustc for now.
-            match target.kind() {
-                TargetKind::Lib(kinds) => Box::new(
-                    kinds
-                        .iter()
-                        .filter(|tk| matches!(tk, CrateType::Cdylib | CrateType::Staticlib))
-                        .map(|target_kind| {
-                            new_unit_dep(
-                                state,
-                                parent,
-                                artifact_pkg,
-                                target
-                                    .clone()
-                                    .set_kind(TargetKind::Lib(vec![target_kind.clone()])),
-                                parent_unit_for,
-                                compile_kind,
-                                CompileMode::Build,
-                                dep.artifact(),
-                            )
-                        }),
-                ) as Box<dyn Iterator<Item = _>>,
-                _ => Box::new(std::iter::once(new_unit_dep(
-                    state,
-                    parent,
-                    artifact_pkg,
-                    target,
-                    parent_unit_for,
-                    compile_kind,
-                    CompileMode::Build,
-                    dep.artifact(),
-                ))),
-            }
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let ret =
+        match_artifacts_kind_with_targets(dep, artifact_pkg.targets(), parent.pkg.name().as_str())?
+            .into_iter()
+            .flat_map(|target| {
+                // We split target libraries into individual units, even though rustc is able
+                // to produce multiple kinds in an single invocation for the sole reason that
+                // each artifact kind has its own output directory, something we can't easily
+                // teach rustc for now.
+                match target.kind() {
+                    TargetKind::Lib(kinds) => Box::new(
+                        kinds
+                            .iter()
+                            .filter(|tk| matches!(tk, CrateType::Cdylib | CrateType::Staticlib))
+                            .map(|target_kind| {
+                                new_unit_dep(
+                                    state,
+                                    parent,
+                                    artifact_pkg,
+                                    target
+                                        .clone()
+                                        .set_kind(TargetKind::Lib(vec![target_kind.clone()])),
+                                    parent_unit_for,
+                                    compile_kind,
+                                    CompileMode::Build,
+                                    dep.artifact(),
+                                )
+                            }),
+                    ) as Box<dyn Iterator<Item = _>>,
+                    _ => Box::new(std::iter::once(new_unit_dep(
+                        state,
+                        parent,
+                        artifact_pkg,
+                        target,
+                        parent_unit_for,
+                        compile_kind,
+                        CompileMode::Build,
+                        dep.artifact(),
+                    ))),
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
     Ok(ret)
 }
 
+/// Given a dependency with an artifact `artifact_dep` and a set of available `targets`
+/// of its package, find a target for each kind of artifacts that are to be built.
+///
+/// Failure to match any target results in an error mentioning the parent manifests
+/// `parent_package` name.
 fn match_artifacts_kind_with_targets<'a>(
-    unit: &Unit,
     artifact_dep: &Dependency,
     targets: &'a [Target],
+    parent_package: &str,
 ) -> CargoResult<HashSet<&'a Target>> {
     let mut out = HashSet::new();
     let artifact_requirements = artifact_dep.artifact().expect("artifact present");
@@ -633,7 +660,7 @@ fn match_artifacts_kind_with_targets<'a>(
             anyhow::bail!(
                 "dependency `{}` in package `{}` requires a `{}` artifact to be present.",
                 artifact_dep.name_in_toml(),
-                unit.pkg.name(),
+                parent_package,
                 artifact_kind
             );
         }
