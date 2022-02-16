@@ -804,6 +804,7 @@ fn allow_artifact_and_no_artifact_dep_to_same_package_within_different_dep_categ
         .file(
             "src/lib.rs",
             r#"
+            #[cfg(test)] extern crate bar;
             pub fn foo() {
                 env!("CARGO_BIN_DIR_BAR");
                 let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR"));
@@ -811,12 +812,49 @@ fn allow_artifact_and_no_artifact_dep_to_same_package_within_different_dep_categ
         )
         .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
         .file("bar/src/main.rs", "fn main() {}")
+        .file("bar/src/lib.rs", "")
+        .build();
+    p.cargo("test -Z bindeps")
+        .masquerade_as_nightly_cargo()
+        .with_stderr_contains("[COMPILING] bar v0.5.0 ([CWD]/bar)")
+        .with_stderr_contains("[FINISHED] test [unoptimized + debuginfo] target(s) in [..]")
+        .run();
+}
+
+#[cargo_test]
+fn normal_build_deps_are_picked_up_in_presence_of_an_artifact_build_dep_to_the_same_package() {
+    let p = project()
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.0"
+                authors = []
+                resolver = "2"
+
+                [dependencies]
+                bar = { path = "bar", artifact = "bin:bar" }
+
+                [build-dependencies]
+                bar = { path = "bar" }
+            "#,
+        )
+        .file("build.rs", "fn main() { bar::f(); }")
+        .file(
+            "src/lib.rs",
+            r#"
+            pub fn foo() {
+                env!("CARGO_BIN_DIR_BAR");
+                let _b = include_bytes!(env!("CARGO_BIN_FILE_BAR"));
+            }"#,
+        )
+        .file("bar/Cargo.toml", &basic_bin_manifest("bar"))
+        .file("bar/src/main.rs", "fn main() {}")
+        .file("bar/src/lib.rs", "pub fn f() {}")
         .build();
     p.cargo("check -Z bindeps")
         .masquerade_as_nightly_cargo()
-        .with_stderr_contains("[COMPILING] bar v0.5.0 ([CWD]/bar)")
-        .with_stderr_contains("[CHECKING] foo [..]")
-        .with_stderr_contains("[FINISHED] dev [unoptimized + debuginfo] target(s) in [..]")
         .run();
 }
 
