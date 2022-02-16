@@ -391,7 +391,7 @@ fn features_are_not_unified_among_lib_and_bin_dep_of_different_target() {
             "d1/src/lib.rs",
             r#"
             #[cfg(feature = "d2")]
-            extern crate d2;
+            pub extern crate d2;
         "#,
         )
         .file(
@@ -564,7 +564,7 @@ fn build_script_with_bin_artifact_and_lib_false() {
             "bar/src/lib.rs",
             r#"
             pub fn doit() {
-               panic!("cannot be called from build script due to lib = false");
+               panic!("sentinel");
             }
         "#,
         )
@@ -572,10 +572,7 @@ fn build_script_with_bin_artifact_and_lib_false() {
     p.cargo("build -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_status(101)
-        .with_stderr_contains(
-            "error[E0433]: failed to resolve: use of undeclared crate or module `bar`",
-        )
-        .with_stderr_contains(" --> build.rs:3:16")
+        .with_stderr_does_not_contain("[..]sentinel[..]")
         .run();
 }
 
@@ -598,7 +595,7 @@ fn lib_with_bin_artifact_and_lib_false() {
         .file(
             "src/lib.rs",
             r#"
-            fn foo() {
+            pub fn foo() {
                bar::doit()
             }"#,
         )
@@ -608,7 +605,7 @@ fn lib_with_bin_artifact_and_lib_false() {
             "bar/src/lib.rs",
             r#"
             pub fn doit() {
-               panic!("cannot be called from library due to lib = false");
+               panic!("sentinel");
             }
         "#,
         )
@@ -616,10 +613,7 @@ fn lib_with_bin_artifact_and_lib_false() {
     p.cargo("build -Z bindeps")
         .masquerade_as_nightly_cargo()
         .with_status(101)
-        .with_stderr_contains(
-            "error[E0433]: failed to resolve: use of undeclared crate or module `bar`",
-        )
-        .with_stderr_contains(" --> src/lib.rs:3:16")
+        .with_stderr_does_not_contain("[..]sentinel[..]")
         .run();
 }
 
