@@ -526,38 +526,16 @@ fn compute_deps_custom_build(
         dep.kind() == DepKind::Build && dep.artifact().is_some()
     });
 
-    build_artifact_requirements_to_units(
-        unit,
-        unit_for.root_compile_kind(),
-        artifact_build_deps,
-        state,
-        &mut result,
-    )?;
-
-    Ok(result)
-}
-
-/// Given a `parent` unit which is a build script with artifact dependencies `artifact_deps`,
-/// produce units that build all required artifact kinds (like binaries,
-/// static libraries, etc) with the correct compile target.
-///
-/// Computing the compile target for artifact units is more involved as it has to handle
-/// various target configurations specific to artifacts, like `target = "target"` and
-/// `target = "<triple>"`, which makes knowing the root units compile target
-/// `root_unit_compile_target` necessary.
-fn build_artifact_requirements_to_units(
-    parent: &Unit,
-    root_unit_compile_target: CompileKind,
-    artifact_deps: Vec<(PackageId, &HashSet<Dependency>)>,
-    state: &State<'_, '_>,
-    ret: &mut Vec<UnitDep>,
-) -> CargoResult<()> {
-    // This really wants to be true for build dependencies, otherwise resolver = "2"
-    // will fail. // It means that the host features will be separated from normal
-    // features, thus won't be unified with them.
-    let host_features = true;
-    let unit_for = UnitFor::new_host(host_features, root_unit_compile_target);
-    for (dep_pkg_id, deps) in artifact_deps {
+    // Produce units that build all required artifact kinds (like binaries,
+    // static libraries, etc) with the correct compile target.
+    //
+    // Computing the compile target for artifact units is more involved as it has to handle
+    // various target configurations specific to artifacts, like `target = "target"` and
+    // `target = "<triple>"`, which makes knowing the root units compile target
+    // `root_unit_compile_target` necessary.
+    let root_unit_compile_target = unit_for.root_compile_kind();
+    let unit_for = UnitFor::new_host(/*host_features*/ true, root_unit_compile_target);
+    for (dep_pkg_id, deps) in artifact_build_deps {
         let artifact_pkg = state.get(dep_pkg_id);
         for build_dep in deps.iter().filter(|d| d.is_build()) {
             let artifact = build_dep.artifact().expect("artifact dep");
@@ -565,8 +543,8 @@ fn build_artifact_requirements_to_units(
                 .target()
                 .map(|target| target.to_resolved_compile_kind(root_unit_compile_target));
 
-            ret.extend(artifact_targets_to_unit_deps(
-                parent,
+            result.extend(artifact_targets_to_unit_deps(
+                unit,
                 unit_for.with_artifact_features_from_resolved_compile_kind(
                     resolved_artifact_compile_kind,
                 ),
@@ -577,7 +555,8 @@ fn build_artifact_requirements_to_units(
             )?);
         }
     }
-    Ok(())
+
+    Ok(result)
 }
 
 /// Given a `parent` unit containing a dependency `dep` whose package is `artifact_pkg`,
