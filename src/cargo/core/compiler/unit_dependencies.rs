@@ -264,16 +264,14 @@ fn compute_deps(
 
     let id = unit.pkg.package_id();
 
-    let dep_filter = &non_custom_and_non_transitive_deps;
-    let filtered_deps = state.deps(unit, unit_for, dep_filter);
+    let filtered_deps = state.deps(unit, unit_for);
 
     let mut ret = Vec::new();
     let mut dev_deps = Vec::new();
     for (dep_pkg_id, deps) in filtered_deps {
         let dep_pkg = state.get(dep_pkg_id);
-        let (could_have_non_artifact_lib, has_artifact_lib) = calc_artifact_deps(
-            unit, unit_for, dep_pkg_id, deps, state, dep_filter, &mut ret,
-        )?;
+        let (could_have_non_artifact_lib, has_artifact_lib) =
+            calc_artifact_deps(unit, unit_for, dep_pkg_id, deps, state, &mut ret)?;
 
         let lib = package_lib(dep_pkg, could_have_non_artifact_lib, has_artifact_lib);
         let dep_lib = match lib {
@@ -421,7 +419,6 @@ fn calc_artifact_deps(
     dep_id: PackageId,
     deps: &HashSet<Dependency>,
     state: &State<'_, '_>,
-    filter: &dyn Fn(&Unit, &Dependency) -> bool,
     ret: &mut Vec<UnitDep>,
 ) -> CargoResult<(bool, bool)> {
     let mut has_artifact_lib = false;
@@ -431,7 +428,7 @@ fn calc_artifact_deps(
     for (dep, artifact) in deps
         .iter()
         .filter(|dep| {
-            if filter(unit, dep) {
+            if non_custom_and_non_transitive_deps(unit, dep) {
                 deps_past_filter += 1;
                 true
             } else {
@@ -522,7 +519,7 @@ fn compute_deps_custom_build(
     //
     // This is essentially the same as `calc_artifact_deps`, but there are some
     // subtle differences that require this to be implemented differently.
-    let artifact_build_deps = state.deps(unit, script_unit_for, &|_unit, dep| {
+    let artifact_build_deps = state.deps_filtered(unit, script_unit_for, &|_unit, dep| {
         dep.kind() == DepKind::Build && dep.artifact().is_some()
     });
 
@@ -666,8 +663,7 @@ fn compute_deps_doc(
     state: &mut State<'_, '_>,
     unit_for: UnitFor,
 ) -> CargoResult<Vec<UnitDep>> {
-    let dep_filter = &non_custom_and_non_transitive_deps;
-    let deps = state.deps(unit, unit_for, dep_filter);
+    let deps = state.deps(unit, unit_for);
 
     // To document a library, we depend on dependencies actually being
     // built. If we're documenting *all* libraries, then we also depend on
@@ -675,7 +671,7 @@ fn compute_deps_doc(
     let mut ret = Vec::new();
     for (id, deps) in deps {
         let (could_have_non_artifact_lib, has_artifact_lib) =
-            calc_artifact_deps(unit, unit_for, id, deps, state, dep_filter, &mut ret)?;
+            calc_artifact_deps(unit, unit_for, id, deps, state, &mut ret)?;
 
         let dep_pkg = state.get(id);
         let lib = package_lib(dep_pkg, could_have_non_artifact_lib, has_artifact_lib);
@@ -1102,8 +1098,13 @@ impl<'a, 'cfg> State<'a, 'cfg> {
             .unwrap_or_else(|_| panic!("expected {} to be downloaded", id))
     }
 
+    /// Returns a set of dependencies for the given unit, with a default filter.
+    fn deps(&self, unit: &Unit, unit_for: UnitFor) -> Vec<(PackageId, &HashSet<Dependency>)> {
+        self.deps_filtered(unit, unit_for, &non_custom_and_non_transitive_deps)
+    }
+
     /// Returns a filtered set of dependencies for the given unit.
-    fn deps(
+    fn deps_filtered(
         &self,
         unit: &Unit,
         unit_for: UnitFor,
