@@ -262,22 +262,15 @@ fn compute_deps(
         return compute_deps_doc(unit, state, unit_for);
     }
 
-    let id = unit.pkg.package_id();
-
-    let filtered_deps = state.deps(unit, unit_for);
-
     let mut ret = Vec::new();
     let mut dev_deps = Vec::new();
-    for (dep_pkg_id, deps) in filtered_deps {
-        let dep_pkg = state.get(dep_pkg_id);
-        let (could_have_non_artifact_lib, has_artifact_lib) =
-            calc_artifact_deps(unit, unit_for, dep_pkg_id, deps, state, &mut ret)?;
-
-        let lib = package_lib(dep_pkg, could_have_non_artifact_lib, has_artifact_lib);
-        let dep_lib = match lib {
-            Some(t) => t,
+    for (dep_pkg_id, deps) in state.deps(unit, unit_for) {
+        let dep_lib = match calc_artifact_deps(unit, unit_for, dep_pkg_id, &deps, state, &mut ret)?
+        {
+            Some(lib) => lib,
             None => continue,
         };
+        let dep_pkg = state.get(dep_pkg_id);
         let mode = check_or_build_mode(unit.mode, dep_lib);
         let dep_unit_for = unit_for.with_dependency(unit, dep_lib, unit_for.root_compile_kind());
 
@@ -357,6 +350,7 @@ fn compute_deps(
         && unit.mode.is_any_test()
         && (unit.target.is_test() || unit.target.is_bench())
     {
+        let id = unit.pkg.package_id();
         ret.extend(
             unit.pkg
                 .targets()
@@ -396,49 +390,28 @@ fn compute_deps(
     Ok(ret)
 }
 
-/// Try to find a target in `dep_pkg` which is a library.
-///
-/// `has_artifact` is true if `dep_pkg` has any artifact, and `artifact_lib` is true
-/// if any of them wants a library to be available too.
-fn package_lib(
-    dep_pkg: &Package,
-    could_have_non_artifact_lib: bool,
-    artifact_lib: bool,
-) -> Option<&Target> {
-    dep_pkg
-        .targets()
-        .iter()
-        .find(|t| t.is_lib() && (could_have_non_artifact_lib || artifact_lib))
-}
-
 /// Find artifacts for all `deps` of `unit` and add units that build these artifacts
 /// to `ret`.
-fn calc_artifact_deps(
+fn calc_artifact_deps<'a>(
     unit: &Unit,
     unit_for: UnitFor,
     dep_id: PackageId,
-    deps: &HashSet<Dependency>,
-    state: &State<'_, '_>,
+    deps: &[&Dependency],
+    state: &State<'a, '_>,
     ret: &mut Vec<UnitDep>,
-) -> CargoResult<(bool, bool)> {
+) -> CargoResult<Option<&'a Target>> {
     let mut has_artifact_lib = false;
-    let mut num_artifacts = 0;
+    let mut maybe_non_artifact_lib = false;
     let artifact_pkg = state.get(dep_id);
-    let mut deps_past_filter = 0;
-    for (dep, artifact) in deps
-        .iter()
-        .filter(|dep| {
-            if non_custom_and_non_transitive_deps(unit, dep) {
-                deps_past_filter += 1;
-                true
-            } else {
-                false
+    for dep in deps {
+        let artifact = match dep.artifact() {
+            Some(a) => a,
+            None => {
+                maybe_non_artifact_lib = true;
+                continue;
             }
-        })
-        .filter_map(|dep| dep.artifact().map(|a| (dep, a)))
-    {
+        };
         has_artifact_lib |= artifact.is_lib();
-        num_artifacts += 1;
         // Custom build scripts (build/compile) never get artifact dependencies,
         // but the run-build-script step does (where it is handled).
         if !unit.target.is_custom_build() {
@@ -462,8 +435,11 @@ fn calc_artifact_deps(
             )?);
         }
     }
-    let could_be_non_artifact_lib = deps_past_filter != num_artifacts;
-    Ok((could_be_non_artifact_lib, has_artifact_lib))
+    if has_artifact_lib || maybe_non_artifact_lib {
+        Ok(artifact_pkg.targets().iter().find(|t| t.is_lib()))
+    } else {
+        Ok(None)
+    }
 }
 
 /// Returns the dependencies needed to run a build script.
@@ -519,10 +495,7 @@ fn compute_deps_custom_build(
     //
     // This is essentially the same as `calc_artifact_deps`, but there are some
     // subtle differences that require this to be implemented differently.
-    let artifact_build_deps = state.deps_filtered(unit, script_unit_for, &|_unit, dep| {
-        dep.kind() == DepKind::Build && dep.artifact().is_some()
-    });
-
+    //
     // Produce units that build all required artifact kinds (like binaries,
     // static libraries, etc) with the correct compile target.
     //
@@ -532,10 +505,13 @@ fn compute_deps_custom_build(
     // `root_unit_compile_target` necessary.
     let root_unit_compile_target = unit_for.root_compile_kind();
     let unit_for = UnitFor::new_host(/*host_features*/ true, root_unit_compile_target);
-    for (dep_pkg_id, deps) in artifact_build_deps {
-        let artifact_pkg = state.get(dep_pkg_id);
-        for build_dep in deps.iter().filter(|d| d.is_build()) {
-            let artifact = build_dep.artifact().expect("artifact dep");
+    for (dep_pkg_id, deps) in state.deps(unit, script_unit_for) {
+        for dep in deps {
+            if dep.kind() != DepKind::Build || dep.artifact().is_none() {
+                continue;
+            }
+            let artifact_pkg = state.get(dep_pkg_id);
+            let artifact = dep.artifact().expect("artifact dep");
             let resolved_artifact_compile_kind = artifact
                 .target()
                 .map(|target| target.to_resolved_compile_kind(root_unit_compile_target));
@@ -548,7 +524,7 @@ fn compute_deps_custom_build(
                 state,
                 resolved_artifact_compile_kind.unwrap_or(CompileKind::Host),
                 artifact_pkg,
-                build_dep,
+                dep,
             )?);
         }
     }
@@ -663,22 +639,16 @@ fn compute_deps_doc(
     state: &mut State<'_, '_>,
     unit_for: UnitFor,
 ) -> CargoResult<Vec<UnitDep>> {
-    let deps = state.deps(unit, unit_for);
-
     // To document a library, we depend on dependencies actually being
     // built. If we're documenting *all* libraries, then we also depend on
     // the documentation of the library being built.
     let mut ret = Vec::new();
-    for (id, deps) in deps {
-        let (could_have_non_artifact_lib, has_artifact_lib) =
-            calc_artifact_deps(unit, unit_for, id, deps, state, &mut ret)?;
-
-        let dep_pkg = state.get(id);
-        let lib = package_lib(dep_pkg, could_have_non_artifact_lib, has_artifact_lib);
-        let dep_lib = match lib {
+    for (id, deps) in state.deps(unit, unit_for) {
+        let dep_lib = match calc_artifact_deps(unit, unit_for, id, &deps, state, &mut ret)? {
             Some(lib) => lib,
             None => continue,
         };
+        let dep_pkg = state.get(id);
         // Rustdoc only needs rmeta files for regular dependencies.
         // However, for plugins/proc macros, deps should be built like normal.
         let mode = check_or_build_mode(unit.mode, dep_lib);
@@ -1098,73 +1068,61 @@ impl<'a, 'cfg> State<'a, 'cfg> {
             .unwrap_or_else(|_| panic!("expected {} to be downloaded", id))
     }
 
-    /// Returns a set of dependencies for the given unit, with a default filter.
-    fn deps(&self, unit: &Unit, unit_for: UnitFor) -> Vec<(PackageId, &HashSet<Dependency>)> {
-        self.deps_filtered(unit, unit_for, &non_custom_and_non_transitive_deps)
-    }
-
     /// Returns a filtered set of dependencies for the given unit.
-    fn deps_filtered(
-        &self,
-        unit: &Unit,
-        unit_for: UnitFor,
-        filter: &dyn Fn(&Unit, &Dependency) -> bool,
-    ) -> Vec<(PackageId, &HashSet<Dependency>)> {
+    fn deps(&self, unit: &Unit, unit_for: UnitFor) -> Vec<(PackageId, Vec<&Dependency>)> {
         let pkg_id = unit.pkg.package_id();
         let kind = unit.kind;
         self.resolve()
             .deps(pkg_id)
-            .filter(|&(_id, deps)| {
+            .filter_map(|(id, deps)| {
                 assert!(!deps.is_empty());
-                deps.iter().any(|dep| {
-                    if !filter(unit, dep) {
-                        return false;
-                    }
-
-                    // If this dependency is only available for certain platforms,
-                    // make sure we're only enabling it for that platform.
-                    if !self.target_data.dep_platform_activated(dep, kind) {
-                        return false;
-                    }
-
-                    // If this is an optional dependency, and the new feature resolver
-                    // did not enable it, don't include it.
-                    if dep.is_optional() {
-                        let features_for = unit_for.map_to_features_for(dep.artifact());
-                        if !self.is_dep_activated(pkg_id, features_for, dep.name_in_toml()) {
+                let deps: Vec<_> = deps
+                    .iter()
+                    .filter(|dep| {
+                        // If this target is a build command, then we only want build
+                        // dependencies, otherwise we want everything *other than* build
+                        // dependencies.
+                        if unit.target.is_custom_build() != dep.is_build() {
                             return false;
                         }
-                    }
 
-                    // If we've gotten past all that, then this dependency is
-                    // actually used!
-                    true
-                })
+                        // If this dependency is **not** a transitive dependency, then it
+                        // only applies to test/example targets.
+                        if !dep.is_transitive()
+                            && !unit.target.is_test()
+                            && !unit.target.is_example()
+                            && !unit.mode.is_doc_scrape()
+                            && !unit.mode.is_any_test()
+                        {
+                            return false;
+                        }
+
+                        // If this dependency is only available for certain platforms,
+                        // make sure we're only enabling it for that platform.
+                        if !self.target_data.dep_platform_activated(dep, kind) {
+                            return false;
+                        }
+
+                        // If this is an optional dependency, and the new feature resolver
+                        // did not enable it, don't include it.
+                        if dep.is_optional() {
+                            let features_for = unit_for.map_to_features_for(dep.artifact());
+                            if !self.is_dep_activated(pkg_id, features_for, dep.name_in_toml()) {
+                                return false;
+                            }
+                        }
+
+                        // If we've gotten past all that, then this dependency is
+                        // actually used!
+                        true
+                    })
+                    .collect();
+                if deps.is_empty() {
+                    None
+                } else {
+                    Some((id, deps))
+                }
             })
             .collect()
     }
-}
-
-fn non_custom_and_non_transitive_deps(unit: &Unit, dep: &Dependency) -> bool {
-    // If this target is a build command, then we only want build
-    // dependencies, otherwise we want everything *other than* build
-    // dependencies.
-    if unit.target.is_custom_build() != dep.is_build() {
-        return false;
-    }
-
-    // If this dependency is **not** a transitive dependency, then it
-    // only applies to test/example targets.
-    if !dep.is_transitive()
-        && !unit.target.is_test()
-        && !unit.target.is_example()
-        && !unit.mode.is_doc_scrape()
-        && !unit.mode.is_any_test()
-    {
-        return false;
-    }
-
-    // If we've gotten past all that, then this dependency is
-    // actually used!
-    true
 }
