@@ -14,11 +14,10 @@ pub fn get_env(
 ) -> CargoResult<HashMap<String, OsString>> {
     let mut env = HashMap::new();
     for unit_dep in dependencies.iter().filter(|d| d.unit.artifact.is_true()) {
-        for artifact_path in cx
-            .outputs(&unit_dep.unit)?
-            .iter()
-            .filter_map(|f| (f.flavor == FileFlavor::Normal).then(|| &f.path))
-        {
+        for artifact_path in cx.outputs(&unit_dep.unit)?.iter().filter_map(|f| {
+            (f.flavor == FileFlavor::Normal)
+                .then(|| f.hardlink.as_deref().unwrap_or_else(|| f.path.as_path()))
+        }) {
             let artifact_type_upper = unit_artifact_type_name_upper(&unit_dep.unit);
             let dep_name = unit_dep.dep_name.unwrap_or(unit_dep.unit.pkg.name());
             let dep_name_upper = dep_name.to_uppercase().replace("-", "_");
