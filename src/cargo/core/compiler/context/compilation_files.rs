@@ -205,8 +205,6 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
             self.build_script_dir(unit)
         } else if unit.target.is_example() {
             self.layout(unit.kind).examples().to_path_buf()
-        } else if unit.artifact.is_true() {
-            self.artifact_dir(unit)
         } else {
             self.deps_dir(unit).to_path_buf()
         }
@@ -295,7 +293,7 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
 
     /// Returns the directory for compiled artifacts files.
     /// `/path/to/target/{debug,release}/deps/artifact/KIND/PKG-HASH`
-    fn artifact_dir(&self, unit: &Unit) -> PathBuf {
+    pub(crate) fn artifact_dir(&self, unit: &Unit) -> PathBuf {
         assert!(self.metas.contains_key(unit));
         assert!(unit.artifact.is_true());
         let dir = self.pkg_dir(unit);
@@ -391,11 +389,6 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
             return None;
         }
 
-        // Artifact dependencies are never uplifted.
-        if unit.artifact.is_true() {
-            return None;
-        }
-
         // - Binaries: The user always wants to see these, even if they are
         //   implicitly built (for example for integration tests).
         // - dylibs: This ensures that the dynamic linker pulls in all the
@@ -419,6 +412,8 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
             self.layout(unit.kind).examples().join(filename)
         } else if unit.target.is_custom_build() {
             self.build_script_dir(unit).join(filename)
+        } else if unit.artifact.is_true() {
+            self.artifact_dir(unit).join(filename)
         } else {
             self.layout(unit.kind).dest().join(filename)
         };
