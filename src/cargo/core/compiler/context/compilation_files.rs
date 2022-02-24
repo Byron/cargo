@@ -205,6 +205,8 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
             self.build_script_dir(unit)
         } else if unit.target.is_example() {
             self.layout(unit.kind).examples().to_path_buf()
+        } else if unit.artifact.is_true() {
+            self.artifact_dir_private(unit)
         } else {
             self.deps_dir(unit).to_path_buf()
         }
@@ -289,6 +291,33 @@ impl<'a, 'cfg: 'a> CompilationFiles<'a, 'cfg> {
         assert!(self.metas.contains_key(unit));
         let dir = self.pkg_dir(unit);
         self.layout(CompileKind::Host).build().join(dir)
+    }
+
+    /// Returns the directory for compiled artifacts files.
+    /// `/path/to/target/{debug,release}/deps/artifact/KIND/PKG-HASH`
+    pub(crate) fn artifact_dir_private(&self, unit: &Unit) -> PathBuf {
+        assert!(self.metas.contains_key(unit));
+        assert!(unit.artifact.is_true());
+        let dir = self.pkg_dir(unit);
+        let kind = match unit.target.kind() {
+            TargetKind::Bin => "bin",
+            TargetKind::Lib(lib_kinds) => match lib_kinds.as_slice() {
+                &[CrateType::Cdylib] => "cdylib",
+                &[CrateType::Staticlib] => "staticlib",
+                invalid => unreachable!(
+                    "BUG: unexpected artifact library type(s): {:?} - these should have been split",
+                    invalid
+                ),
+            },
+            invalid => unreachable!(
+                "BUG: {:?} are not supposed to be used as artifacts",
+                invalid
+            ),
+        };
+        self.layout(unit.kind)
+            .artifact_private()
+            .join(dir)
+            .join(kind)
     }
 
     /// Returns the directory for compiled artifacts files.

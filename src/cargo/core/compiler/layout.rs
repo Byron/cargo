@@ -122,6 +122,8 @@ pub struct Layout {
     build: PathBuf,
     /// The directory for artifacts, i.e. binaries, cdylibs, staticlibs: `$dest/deps/artifact`
     artifact: PathBuf,
+    /// The directory for artifacts dependencies, which are undesirable in the exposed artifact directory
+    artifact_private: PathBuf,
     /// The directory for incremental files: `$dest/incremental`
     incremental: PathBuf,
     /// The directory for fingerprints: `$dest/.fingerprint`
@@ -171,11 +173,13 @@ impl Layout {
         let dest = dest.into_path_unlocked();
         let deps = dest.join("deps");
         let artifact = deps.join("artifact");
+        let artifact_private = deps.join("artifact_deps");
 
         Ok(Layout {
             deps,
             build: dest.join("build"),
             artifact,
+            artifact_private,
             incremental: dest.join("incremental"),
             fingerprint: dest.join(".fingerprint"),
             examples: dest.join("examples"),
@@ -233,6 +237,10 @@ impl Layout {
     /// Fetch the artifact path.
     pub fn artifact(&self) -> &Path {
         &self.artifact
+    }
+    /// Fetch the private artifact path.
+    pub fn artifact_private(&self) -> &Path {
+        &self.artifact_private
     }
     /// Create and return the tmp path.
     pub fn prepare_tmp(&self) -> CargoResult<&Path> {

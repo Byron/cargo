@@ -262,17 +262,20 @@ fn rustc(cx: &mut Context<'_, '_>, unit: &Unit, exec: &Arc<dyn Executor>) -> Car
     let fingerprint_dir = cx.files().fingerprint_dir(unit);
     let script_metadata = cx.find_build_script_metadata(unit);
     let is_local = unit.is_local();
-    let artifact_dir = unit
-        .artifact
-        .is_true()
-        .then(|| cx.files().artifact_dir(unit));
+    let artifact_dirs = unit.artifact.is_true().then(|| {
+        (
+            cx.files().artifact_dir(unit),
+            cx.files().artifact_dir_private(unit),
+        )
+    });
 
     return Ok(Work::new(move |state| {
         // Artifacts are in a different location than typical units,
         // hence we must assure the crate- and target-dependent
         // directory is present.
-        if let Some(artifact_dir) = artifact_dir {
+        if let Some((artifact_dir, artifact_dir_private)) = artifact_dirs {
             paths::create_dir_all(artifact_dir)?;
+            paths::create_dir_all(artifact_dir_private)?;
         }
 
         // Only at runtime have we discovered what the extra -L and -l
