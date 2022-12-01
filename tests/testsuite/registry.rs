@@ -2,6 +2,7 @@
 
 use cargo::core::SourceId;
 use cargo_test_support::cargo_process;
+use cargo_test_support::git::Gitoxide;
 use cargo_test_support::paths::{self, CargoPathExt};
 use cargo_test_support::registry::{
     self, registry_path, Dependency, Package, RegistryBuilder, TestRegistry,
@@ -1422,7 +1423,7 @@ fn fetch_downloads_http() {
     fetch_downloads(cargo_http);
 }
 
-#[cargo_test]
+#[cargo_test(gitoxide)]
 fn fetch_downloads_git() {
     fetch_downloads(cargo_stable);
 }
@@ -1447,6 +1448,7 @@ fn fetch_downloads(cargo: fn(&Project, &str) -> Execs) {
     Package::new("a", "0.1.0").publish();
 
     cargo(&p, "fetch")
+        .maybe_fetch_with_gitoxide()
         .with_stderr(
             "\
 [UPDATING] `[..]` index

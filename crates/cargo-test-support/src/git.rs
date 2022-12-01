@@ -247,3 +247,26 @@ pub fn tag(repo: &git2::Repository, name: &str) {
         false
     ));
 }
+
+/// A utility trait to make enabling `gitoxide` related features easier in select tests.
+///
+/// Generally this will only affect arguments to `Execs` if we are in a special test run
+/// marked with `RUSTFLAGS=--cfg test_gitoxide`.
+pub trait Gitoxide {
+    fn maybe_fetch_with_gitoxide(&mut self) -> &mut Self;
+}
+
+impl Gitoxide for crate::Execs {
+    /// Fetch both the crates-index as well as git dependencies with `gitoxide`.
+    fn maybe_fetch_with_gitoxide(&mut self) -> &mut Self {
+        #[cfg(test_gitoxide)]
+        enable_feature(self, "fetch");
+        self
+    }
+}
+
+#[cfg(test_gitoxide)]
+fn enable_feature(exec: &mut crate::Execs, name: &str) {
+    exec.masquerade_as_nightly_cargo(&["gitoxide"])
+        .arg(format!("-Zgitoxide={}", name));
+}

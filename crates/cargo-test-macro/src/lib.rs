@@ -32,6 +32,8 @@ pub fn cargo_test(attr: TokenStream, item: TokenStream) -> TokenStream {
         };
     }
     let is_not_nightly = !version().1;
+    #[cfg(test_gitoxide)]
+    let mut enable_gitoxide_test = false;
     for rule in split_rules(attr) {
         match rule.as_str() {
             "build_std_real" => {
@@ -59,6 +61,12 @@ pub fn cargo_test(attr: TokenStream, item: TokenStream) -> TokenStream {
                 requires_reason = true;
                 set_ignore!(is_not_nightly, "requires nightly");
             }
+            "gitoxide" => {
+                #[cfg(test_gitoxide)]
+                {
+                    enable_gitoxide_test = true;
+                }
+            }
             s if s.starts_with("requires_") => {
                 let command = &s[9..];
                 set_ignore!(!has_command(command), "{command} not installed");
@@ -80,6 +88,13 @@ pub fn cargo_test(attr: TokenStream, item: TokenStream) -> TokenStream {
             "#[cargo_test] with a rule also requires a reason, \
             such as #[cargo_test(nightly, reason = \"needs -Z unstable-thing\")]"
         );
+    }
+    #[cfg(test_gitoxide)]
+    if !enable_gitoxide_test {
+        ignore = true;
+        implicit_reasons.push(
+            "not yet enabled for using 'gitoxide' and tested in the standard test run".to_string(),
+        )
     }
 
     // Construct the appropriate attributes.
@@ -114,7 +129,8 @@ pub fn cargo_test(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 
     // Find where the function body starts, and add the boilerplate at the start.
-    for token in item {
+    let mut item = item.into_iter();
+    while let Some(token) = item.next() {
         let group = match token {
             TokenTree::Group(g) => {
                 if g.delimiter() == Delimiter::Brace {
@@ -123,6 +139,22 @@ pub fn cargo_test(attr: TokenStream, item: TokenStream) -> TokenStream {
                     ret.extend(Some(TokenTree::Group(g)));
                     continue;
                 }
+            }
+            // Remove duplicate ignore statements to avoid errors - ours take precedence.
+            // Only needed for handling `gitoxide` tests.
+            #[cfg(test_gitoxide)]
+            TokenTree::Punct(p) if p.as_char() == '#' => {
+                let next = item.next().expect("group");
+                let TokenTree::Group(g) = next else {
+                    ret.extend([TokenTree::Punct(p), next]);
+                    continue
+                };
+                if g.delimiter() == Delimiter::Bracket && g.to_string().contains("ignore") {
+                    continue;
+                }
+
+                ret.extend([TokenTree::Punct(p), TokenTree::Group(g)]);
+                continue;
             }
             other => {
                 ret.extend(Some(other));

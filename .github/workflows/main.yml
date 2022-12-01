@@ -80,6 +80,8 @@ jobs:
 
     # Deny warnings on CI to avoid warnings getting into the codebase.
     - run: cargo test --features 'deny-warnings'
+    - name: gitoxide tests (git-related and enabled tests only)
+      run: RUSTFLAGS='--cfg test_gitoxide' cargo test git
     # The testsuite generates a huge amount of data, and fetch-smoke-test was
     # running out of disk space.
     - name: Clear test output
