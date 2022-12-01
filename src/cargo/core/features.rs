@@ -675,6 +675,7 @@ unstable_cli_options!(
     doctest_xcompile: bool = ("Compile and run doctests for non-host target using runner config"),
     dual_proc_macros: bool = ("Build proc-macros for both the host and the target"),
     features: Option<Vec<String>>  = (HIDDEN),
+    gitoxide: Option<GitoxideFeatures> = ("Use gitoxide for the given git interactions, or all of them if no argument is given"),
     jobserver_per_rustc: bool = (HIDDEN),
     minimal_versions: bool = ("Resolve minimal dependency versions instead of maximum"),
     mtime_on_use: bool = ("Configure Cargo to update the mtime of used files"),
@@ -776,6 +777,50 @@ where
     };
 
     parse_check_cfg(crates.into_iter()).map_err(D::Error::custom)
+}
+
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize)]
+pub struct GitoxideFeatures {
+    /// All featches are done with gitoxide, which includes git dependencies as well as the crates index.
+    pub fetch: bool,
+    /// When cloning the index, perform a shallow clone. Maintain shallowness upon subsequent fetches.
+    pub shallow_index: bool,
+    /// Checkout git dependencies using `gitoxide` (submodules are still handled by git2 ATM, and filters
+    /// like linefeed conversions are unsupported).
+    pub checkout: bool,
+}
+
+impl GitoxideFeatures {
+    fn all() -> Self {
+        GitoxideFeatures {
+            fetch: true,
+            shallow_index: true,
+            checkout: true,
+        }
+    }
+}
+
+fn parse_gitoxide(
+    it: impl Iterator<Item = impl AsRef<str>>,
+) -> CargoResult<Option<GitoxideFeatures>> {
+    let mut out = GitoxideFeatures::default();
+    let GitoxideFeatures {
+        fetch,
+        shallow_index,
+        checkout,
+    } = &mut out;
+
+    for e in it {
+        match e.as_ref() {
+            "fetch" => *fetch = true,
+            "shallow_index" => *shallow_index = true,
+            "checkout" => *checkout = true,
+            _ => {
+                bail!("unstable 'gitoxide' only takes `fetch`, 'shallow_index' and 'checkout' as valid inputs")
+            }
+        }
+    }
+    Ok(Some(out))
 }
 
 fn parse_check_cfg(
@@ -928,6 +973,12 @@ impl CliUnstable {
             "doctest-in-workspace" => self.doctest_in_workspace = parse_empty(k, v)?,
             "panic-abort-tests" => self.panic_abort_tests = parse_empty(k, v)?,
             "jobserver-per-rustc" => self.jobserver_per_rustc = parse_empty(k, v)?,
+            "gitoxide" => {
+                self.gitoxide = v.map_or_else(
+                    || Ok(Some(GitoxideFeatures::all())),
+                    |v| parse_gitoxide(v.split(',')),
+                )?
+            }
             "host-config" => self.host_config = parse_empty(k, v)?,
             "target-applies-to-host" => self.target_applies_to_host = parse_empty(k, v)?,
             "publish-timeout" => self.publish_timeout = parse_empty(k, v)?,
