@@ -4595,3 +4595,82 @@ Caused by:
 "#]])
         .run();
 }
+
+#[cargo_test]
+fn gitignored_nested_repo_not_treated_as_uncommitted() {
+    // Test for issue rust-lang/cargo#16547
+    // https://github.com/rust-lang/cargo/issues/16547
+    //
+    // When a nested git repository is .gitignored, files within it should NOT be
+    // treated as uncommitted changes by cargo publish.
+    //
+    // This test verifies that the issue is fixed. If the bug were present, cargo publish
+    // would fail with an error like:
+    //   "ERROR: 1 files in the working directory contain changes that were not yet committed into git:
+    //    tests/fixtures/nested-repo/.github/workflow.yml"
+    //
+    // With the fix, cargo publish correctly ignores the nested repository and proceeds
+    // without errors.
+
+    // Use local registry for faster test times
+    let registry = registry::init();
+
+    let p = project().no_manifest().build();
+
+    // Create main repository with a cargo project
+    let main_repo = repo(&paths::root().join("foo"))
+        .file(
+            "Cargo.toml",
+            r#"
+                [package]
+                name = "foo"
+                version = "0.0.1"
+                edition = "2015"
+                authors = []
+                license = "MIT"
+                description = "foo"
+                documentation = "foo"
+                homepage = "foo"
+                repository = "foo"
+            "#,
+        )
+        .file("src/main.rs", "fn main() {}")
+        .file(".gitignore", "tests/fixtures/")
+        .build();
+
+    // Create a nested git repository in tests/fixtures/ that is gitignored
+    // This simulates test fixtures that are git repositories (like gix-dir test fixtures)
+    fs::create_dir_all(main_repo.root().join("tests/fixtures/nested-repo")).unwrap();
+    let nested_repo = git::init(&main_repo.root().join("tests/fixtures/nested-repo"));
+
+    // Add files to the nested repository (similar to the .github/workflow.yml in the issue)
+    fs::create_dir_all(main_repo.root().join("tests/fixtures/nested-repo/.github")).unwrap();
+    fs::write(
+        main_repo
+            .root()
+            .join("tests/fixtures/nested-repo/.github/workflow.yml"),
+        "# workflow file",
+    )
+    .unwrap();
+
+    // Commit the file in the nested repository
+    git::add(&nested_repo);
+    git::commit(&nested_repo);
+
+    // Try to publish - this should succeed without errors about uncommitted files.
+    // If the bug from issue #16547 were present, this would fail with an error about
+    // uncommitted changes in the nested repository.
+    p.cargo("publish --no-verify")
+        .replace_crates_io(registry.index_url())
+        .with_stderr_data(str![[r#"
+[UPDATING] crates.io index
+[PACKAGING] foo v0.0.1 ([ROOT]/foo)
+[PACKAGED] 6 files, [FILE_SIZE]B ([FILE_SIZE]B compressed)
+[UPLOADING] foo v0.0.1 ([ROOT]/foo)
+[UPLOADED] foo v0.0.1 to registry `crates-io`
+[NOTE] waiting for foo v0.0.1 to be available at registry `crates-io`
+[HELP] you may press ctrl-c to skip waiting; the crate should be available shortly
+...
+"#]])
+        .run();
+}
