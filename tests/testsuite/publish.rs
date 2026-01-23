@@ -4602,7 +4602,7 @@ fn gitignored_nested_repo_not_treated_as_uncommitted() {
     // https://github.com/rust-lang/cargo/issues/16547
     //
     // When a nested git repository is .gitignored, files within it should NOT be
-    // treated as uncommitted changes by cargo publish.
+    // treated as uncommitted changes by `cargo publish`.
     //
     // This test verifies that the issue is fixed. If the bug were present, cargo publish
     // would fail with an error like:
@@ -4635,41 +4635,45 @@ fn gitignored_nested_repo_not_treated_as_uncommitted() {
             "#,
         )
         .file("src/main.rs", "fn main() {}")
-        .file(".gitignore", "tests/fixtures/")
+        .file(".gitignore", "**/generated-do-not-edit/")
         .build();
 
     // Create a nested git repository in tests/fixtures/ that is gitignored
     // This simulates test fixtures that are git repositories (like gix-dir test fixtures)
-    fs::create_dir_all(main_repo.root().join("tests/fixtures/nested-repo")).unwrap();
-    let nested_repo = git::init(&main_repo.root().join("tests/fixtures/nested-repo"));
+    let repo_base = main_repo.root().join(
+        "tests/fixtures/generated-to-not-edit/many/613585535-unix/slash-in-root-and-negated/",
+    );
+    fs::create_dir_all(&repo_base).unwrap();
+    let nested_repo = git::init(&repo_base);
 
     // Add files to the nested repository (similar to the .github/workflow.yml in the issue)
-    fs::create_dir_all(main_repo.root().join("tests/fixtures/nested-repo/.github")).unwrap();
-    fs::write(
-        main_repo
-            .root()
-            .join("tests/fixtures/nested-repo/.github/workflow.yml"),
-        "# workflow file",
-    )
-    .unwrap();
+    let content_dir = repo_base.join(".github");
+    fs::create_dir_all(&content_dir).unwrap();
+    fs::write(content_dir.join("workflow.yml"), "# workflow file").unwrap();
 
     // Commit the file in the nested repository
     git::add(&nested_repo);
     git::commit(&nested_repo);
 
+    fs::write(
+        content_dir.join("untracked-in-hidden-dir"),
+        "not needed for reproduction, but good to see that it picks up everything apparently",
+    )
+    .unwrap();
+
+    fs::write(
+        repo_base.join("untracked-in-root"),
+        "not needed for reproduction, but good to see that it picks up everything apparently",
+    )
+    .unwrap();
+
     // Try to publish - this should succeed without errors about uncommitted files.
     // If the bug from issue #16547 were present, this would fail with an error about
     // uncommitted changes in the nested repository.
-    p.cargo("publish --no-verify")
+    p.cargo("publish --no-verify --dry-run")
         .replace_crates_io(registry.index_url())
         .with_stderr_data(str![[r#"
-[UPDATING] crates.io index
-[PACKAGING] foo v0.0.1 ([ROOT]/foo)
-[PACKAGED] 6 files, [FILE_SIZE]B ([FILE_SIZE]B compressed)
-[UPLOADING] foo v0.0.1 ([ROOT]/foo)
-[UPLOADED] foo v0.0.1 to registry `crates-io`
-[NOTE] waiting for foo v0.0.1 to be available at registry `crates-io`
-[HELP] you may press ctrl-c to skip waiting; the crate should be available shortly
+TODO: fill in the actual
 ...
 "#]])
         .run();
