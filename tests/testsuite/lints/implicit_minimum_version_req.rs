@@ -1065,6 +1065,8 @@ implicit_minimum_version_req = "warn"
 [package]
 name = "member"
 edition = "2021"
+
+[lints]
 "#,
         )
         .file("member/src/lib.rs", "")
@@ -1073,6 +1075,17 @@ edition = "2021"
     p.cargo("check -Zcargo-lints")
         .masquerade_as_nightly_cargo(&["cargo-lints"])
         .with_stderr_data(str![[r#"
+[WARNING] unused workspace dependency
+ --> Cargo.toml:7:1
+  |
+7 | dep = "1"
+  | ^^^
+  |
+  = [NOTE] `cargo::unused_workspace_dependencies` is set to `warn` by default
+[HELP] consider removing the unused dependency
+  |
+7 - dep = "1"
+  |
 [WARNING] dependency version requirement without an explicit minimum version
  --> Cargo.toml:7:7
   |
@@ -1131,6 +1144,17 @@ workspace = true
     p.cargo("check -Zcargo-lints")
         .masquerade_as_nightly_cargo(&["cargo-lints"])
         .with_stderr_data(str![[r#"
+[WARNING] unused workspace dependency
+ --> Cargo.toml:7:1
+  |
+7 | dep = "1"
+  | ^^^
+  |
+  = [NOTE] `cargo::unused_workspace_dependencies` is set to `warn` by default
+[HELP] consider removing the unused dependency
+  |
+7 - dep = "1"
+  |
 [WARNING] dependency version requirement without an explicit minimum version
  --> Cargo.toml:7:7
   |

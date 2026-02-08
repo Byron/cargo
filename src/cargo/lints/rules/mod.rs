@@ -1,19 +1,46 @@
 mod blanket_hint_mostly_unused;
 mod im_a_teapot;
 mod implicit_minimum_version_req;
-mod non_kebab_case_bin;
+mod missing_lints_inheritance;
+mod non_kebab_case_bins;
+mod non_kebab_case_features;
+mod non_kebab_case_packages;
+mod non_snake_case_features;
+mod non_snake_case_packages;
+mod redundant_homepage;
+mod redundant_readme;
 mod unknown_lints;
+mod unused_workspace_dependencies;
+mod unused_workspace_package_fields;
 
 pub use blanket_hint_mostly_unused::blanket_hint_mostly_unused;
 pub use im_a_teapot::check_im_a_teapot;
 pub use implicit_minimum_version_req::implicit_minimum_version_req;
-pub use non_kebab_case_bin::non_kebab_case_bin;
+pub use missing_lints_inheritance::missing_lints_inheritance;
+pub use non_kebab_case_bins::non_kebab_case_bins;
+pub use non_kebab_case_features::non_kebab_case_features;
+pub use non_kebab_case_packages::non_kebab_case_packages;
+pub use non_snake_case_features::non_snake_case_features;
+pub use non_snake_case_packages::non_snake_case_packages;
+pub use redundant_homepage::redundant_homepage;
+pub use redundant_readme::redundant_readme;
 pub use unknown_lints::output_unknown_lints;
+pub use unused_workspace_dependencies::unused_workspace_dependencies;
+pub use unused_workspace_package_fields::unused_workspace_package_fields;
 
 pub const LINTS: &[crate::lints::Lint] = &[
     blanket_hint_mostly_unused::LINT,
     implicit_minimum_version_req::LINT,
     im_a_teapot::LINT,
-    non_kebab_case_bin::LINT,
+    missing_lints_inheritance::LINT,
+    non_kebab_case_bins::LINT,
+    non_kebab_case_features::LINT,
+    non_kebab_case_packages::LINT,
+    non_snake_case_features::LINT,
+    non_snake_case_packages::LINT,
+    redundant_homepage::LINT,
+    redundant_readme::LINT,
     unknown_lints::LINT,
+    unused_workspace_dependencies::LINT,
+    unused_workspace_package_fields::LINT,
 ];

@@ -20,13 +20,22 @@ Note: [Cargo's linting system is unstable](unstable.md#lintscargo) and can only 
 
 These lints are all set to the 'allow' level by default.
 - [`implicit_minimum_version_req`](#implicit_minimum_version_req)
+- [`non_kebab_case_features`](#non_kebab_case_features)
+- [`non_kebab_case_packages`](#non_kebab_case_packages)
+- [`non_snake_case_features`](#non_snake_case_features)
+- [`non_snake_case_packages`](#non_snake_case_packages)
 
 ## Warn-by-default
 
 These lints are all set to the 'warn' level by default.
 - [`blanket_hint_mostly_unused`](#blanket_hint_mostly_unused)
-- [`non_kebab_case_bin`](#non_kebab_case_bin)
+- [`missing_lints_inheritance`](#missing_lints_inheritance)
+- [`non_kebab_case_bins`](#non_kebab_case_bins)
+- [`redundant_homepage`](#redundant_homepage)
+- [`redundant_readme`](#redundant_readme)
 - [`unknown_lints`](#unknown_lints)
+- [`unused_workspace_dependencies`](#unused_workspace_dependencies)
+- [`unused_workspace_package_fields`](#unused_workspace_package_fields)
 
 ## `blanket_hint_mostly_unused`
 Group: `suspicious`
@@ -109,7 +118,38 @@ serde = "1.0.219"
 ```
 
 
-## `non_kebab_case_bin`
+## `missing_lints_inheritance`
+Group: `suspicious`
+
+Level: `warn`
+
+### What it does
+
+Checks for packages without a `lints` table while `workspace.lints` is present.
+
+### Why it is bad
+
+Many people mistakenly think that `workspace.lints` is implicitly inherited when it is not.
+
+### Drawbacks
+
+### Example
+
+```toml
+[workspace.lints.cargo]
+```
+
+Should be written as:
+
+```toml
+[workspace.lints.cargo]
+
+[lints]
+workspace = true
+```
+
+
+## `non_kebab_case_bins`
 Group: `style`
 
 Level: `warn`
@@ -145,6 +185,204 @@ name = "foo-bar"
 ```
 
 
+## `non_kebab_case_features`
+Group: `restriction`
+
+Level: `allow`
+
+### What it does
+
+Detect feature names that are not kebab-case.
+
+### Why it is bad
+
+Having multiple naming styles within a workspace can be confusing.
+
+### Drawbacks
+
+Users would expect that a feature tightly coupled to a dependency would match the dependency's name.
+
+### Example
+
+```toml
+[features]
+foo_bar = []
+```
+
+Should be written as:
+
+```toml
+[features]
+foo-bar = []
+```
+
+
+## `non_kebab_case_packages`
+Group: `restriction`
+
+Level: `allow`
+
+### What it does
+
+Detect package names that are not kebab-case.
+
+### Why it is bad
+
+Having multiple naming styles within a workspace can be confusing.
+
+### Drawbacks
+
+Users have to mentally translate package names to namespaces in Rust.
+
+### Example
+
+```toml
+[package]
+name = "foo_bar"
+```
+
+Should be written as:
+
+```toml
+[package]
+name = "foo-bar"
+```
+
+
+## `non_snake_case_features`
+Group: `restriction`
+
+Level: `allow`
+
+### What it does
+
+Detect feature names that are not snake-case.
+
+### Why it is bad
+
+Having multiple naming styles within a workspace can be confusing.
+
+### Drawbacks
+
+Users would expect that a feature tightly coupled to a dependency would match the dependency's name.
+
+### Example
+
+```toml
+[features]
+foo-bar = []
+```
+
+Should be written as:
+
+```toml
+[features]
+foo_bar = []
+```
+
+
+## `non_snake_case_packages`
+Group: `restriction`
+
+Level: `allow`
+
+### What it does
+
+Detect package names that are not snake-case.
+
+### Why it is bad
+
+Having multiple naming styles within a workspace can be confusing.
+
+### Drawbacks
+
+Users have to mentally translate package names to namespaces in Rust.
+
+### Example
+
+```toml
+[package]
+name = "foo_bar"
+```
+
+Should be written as:
+
+```toml
+[package]
+name = "foo-bar"
+```
+
+
+## `redundant_homepage`
+Group: `style`
+
+Level: `warn`
+
+### What it does
+
+Checks if the value of `package.homepage` is already covered by another field.
+
+See also [`package.homepage` reference documentation](manifest.md#the-homepage-field).
+
+### Why it is bad
+
+When package browsers render each link, a redundant link adds visual noise.
+
+### Drawbacks
+
+### Example
+
+```toml
+[package]
+name = "foo"
+homepage = "https://github.com/rust-lang/cargo/"
+repository = "https://github.com/rust-lang/cargo/"
+```
+
+Should be written as:
+
+```toml
+[package]
+name = "foo"
+repository = "https://github.com/rust-lang/cargo/"
+```
+
+
+## `redundant_readme`
+Group: `style`
+
+Level: `warn`
+
+### What it does
+
+Checks for `package.readme` fields that can be inferred.
+
+See also [`package.readme` reference documentation](manifest.md#the-readme-field).
+
+### Why it is bad
+
+Adds boilerplate.
+
+### Drawbacks
+
+It might not be obvious if they named their file correctly.
+
+### Example
+
+```toml
+[package]
+name = "foo"
+readme = "README.md"
+```
+
+Should be written as:
+
+```toml
+[package]
+name = "foo"
+```
+
+
 ## `unknown_lints`
 Group: `suspicious`
 
@@ -163,6 +401,47 @@ Checks for unknown lints in the `[lints.cargo]` table
 ```toml
 [lints.cargo]
 this-lint-does-not-exist = "warn"
+```
+
+
+## `unused_workspace_dependencies`
+Group: `suspicious`
+
+Level: `warn`
+
+### What it does
+Checks for any entry in `[workspace.dependencies]` that has not been inherited
+
+### Why it is bad
+They can give the false impression that these dependencies are used
+
+### Example
+```toml
+[workspace.dependencies]
+regex = "1"
+
+[dependencies]
+```
+
+
+## `unused_workspace_package_fields`
+Group: `suspicious`
+
+Level: `warn`
+
+### What it does
+Checks for any fields in `[workspace.package]` that has not been inherited
+
+### Why it is bad
+They can give the false impression that these fields are used
+
+### Example
+```toml
+[workspace.package]
+edition = "2024"
+
+[package]
+name = "foo"
 ```
 
 

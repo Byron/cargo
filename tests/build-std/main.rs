@@ -165,9 +165,8 @@ fn basic() {
         .build_std_isolated()
         .target_host()
         .with_stderr_data(str![[r#"
-[COMPILING] test v0.0.0 ([..])
+[COMPILING] [..]
 ...
-[COMPILING] foo v0.0.1 ([ROOT]/foo)
 [FINISHED] `test` profile [unoptimized + debuginfo] target(s) in [ELAPSED]s
 [RUNNING] unittests src/lib.rs (target/[HOST_TARGET]/debug/deps/foo-[HASH])
 [RUNNING] unittests src/main.rs (target/[HOST_TARGET]/debug/deps/foo-[HASH])
@@ -211,10 +210,22 @@ fn lto() {
         )
         .build();
 
-    p.cargo("build")
-        .build_std_arg("std")
-        .env("RUSTFLAGS", "-C linker-features=-lld")
-        .run();
+    let mut exec = p.cargo("build");
+    exec.build_std_arg("std");
+    // Include `-lld` to disable the self-contained linker. This test is
+    // checking for the behavior when using the system linker (like GNU ld or
+    // older versions of lld) which have problems with the bitcode sections in
+    // compiler_builtins.
+    //
+    // This option is only available on x86-64-unknown-linux-gnu.
+    if cfg!(all(
+        target_arch = "x86_64",
+        target_os = "linux",
+        target_env = "gnu"
+    )) {
+        exec.env("RUSTFLAGS", "-C linker-features=-lld");
+    }
+    exec.run();
 }
 
 #[cargo_test(build_std_real)]
@@ -301,7 +312,8 @@ fn cross_custom() {
         .file("custom-target.json", target_spec_json())
         .build();
 
-    p.cargo("build --target custom-target.json -v")
+    p.cargo("build --target custom-target.json -v -Zjson-target-spec")
+        .masquerade_as_nightly_cargo(&["json_target_spec"])
         .build_std_arg("core")
         .run();
 }
@@ -341,7 +353,8 @@ fn custom_test_framework() {
     paths.insert(0, sysroot_bin);
     let new_path = env::join_paths(paths).unwrap();
 
-    p.cargo("test --target target.json --no-run -v")
+    p.cargo("test --target target.json --no-run -v -Zjson-target-spec")
+        .masquerade_as_nightly_cargo(&["json_target_spec"])
         .env("PATH", new_path)
         .build_std_arg("core")
         .run();

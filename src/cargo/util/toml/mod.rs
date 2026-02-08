@@ -845,7 +845,7 @@ fn normalize_package_readme(
     }
 }
 
-const DEFAULT_README_FILES: [&str; 3] = ["README.md", "README.txt", "README"];
+pub const DEFAULT_README_FILES: [&str; 3] = ["README.md", "README.txt", "README"];
 
 /// Checks if a file with any of the default README file names exists in the package root.
 /// If so, returns a `String` representing that name.
@@ -1792,13 +1792,13 @@ note: only a feature named `default` will be enabled by default"
     let default_kind = normalized_package
         .default_target
         .as_ref()
-        .map(|t| CompileTarget::new(&*t))
+        .map(|t| CompileTarget::new(&*t, gctx.cli_unstable().json_target_spec))
         .transpose()?
         .map(CompileKind::Target);
     let forced_kind = normalized_package
         .forced_target
         .as_ref()
-        .map(|t| CompileTarget::new(&*t))
+        .map(|t| CompileTarget::new(&*t, gctx.cli_unstable().json_target_spec))
         .transpose()?
         .map(CompileKind::Target);
     let include = normalized_package
@@ -2311,7 +2311,12 @@ fn dep_to_dependency<P: ResolveToPath + Clone>(
         orig.target.as_deref(),
     ) {
         if manifest_ctx.gctx.cli_unstable().bindeps {
-            let artifact = Artifact::parse(&artifact.0, is_lib, target)?;
+            let artifact = Artifact::parse(
+                &artifact.0,
+                is_lib,
+                target,
+                manifest_ctx.gctx.cli_unstable().json_target_spec,
+            )?;
             if dep.kind() != DepKind::Build
                 && artifact.target() == Some(ArtifactTarget::BuildDependencyAssumeTarget)
             {
